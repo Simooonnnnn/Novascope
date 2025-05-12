@@ -1,4 +1,4 @@
-package com.yourdomain.novascope.model
+package com.example.novascope.model
 
 data class NewsItem(
     val id: String,

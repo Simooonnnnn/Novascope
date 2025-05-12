@@ -1,9 +1,9 @@
-package com.yourdomain.novascope.data
+package com.example.novascope.data
 
 import android.util.Log
 import com.prof18.rssparser.RssParser
 import com.prof18.rssparser.model.RssChannel
-import com.yourdomain.novascope.model.NewsItem
+import com.example.novascope.model.NewsItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID

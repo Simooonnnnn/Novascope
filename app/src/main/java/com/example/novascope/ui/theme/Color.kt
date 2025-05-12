@@ -1,4 +1,4 @@
-package com.yourdomain.novascope.ui.theme
+package com.example.novascope.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
