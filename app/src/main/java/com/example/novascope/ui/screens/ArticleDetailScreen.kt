@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -69,7 +70,7 @@ fun ArticleDetailScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            SmallTopAppBar(
+            TopAppBar(  // Changed from SmallTopAppBar
                 title = {
                     // Empty title - we'll show it in the content to achieve
                     // a more custom scrolling effect
@@ -77,7 +78,7 @@ fun ArticleDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
-                            imageVector = Icons.Rounded.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,  // Updated reference
                             contentDescription = "Back"
                         )
                     }

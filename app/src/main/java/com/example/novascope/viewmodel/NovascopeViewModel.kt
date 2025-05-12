@@ -2,6 +2,7 @@
 package com.example.novascope.viewmodel
 
 import android.content.Context
+import android.util.Log  // Add this import
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -12,7 +13,7 @@ import com.example.novascope.ai.ArticleSummarizer
 import com.example.novascope.ai.SummaryState
 import com.example.novascope.data.RssService
 import com.example.novascope.model.NewsItem
-import com.example.novascope.ui.components.FeedCategory
+import com.example.novascope.model.FeedCategory  // Ensure correct import
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,24 +24,19 @@ import java.util.UUID
 // Simplified parts of NovascopeViewModel.kt
 class NovascopeViewModel(private val context: Context) : ViewModel() {
 
-    private fun getFeedSources(): List<FeedSource> {
-        return feedSources
-    }
-
-
     private val feedSources = mutableListOf(
         FeedSource(
             id = UUID.randomUUID().toString(),
             name = "Tech News",
             url = "https://www.theverge.com/rss/index.xml",
-            category = FeedCategory.Tech,
+            category = FeedCategory.Tech,  // Make sure it's the correct enum
             isEnabled = true
         ),
         FeedSource(
             id = UUID.randomUUID().toString(),
             name = "World News",
             url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-            category = FeedCategory.News,
+            category = FeedCategory.News,  // Make sure it's the correct enum
             isEnabled = true
         )
     )
@@ -68,6 +64,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     }
 
     // Simplified feed loading
+// In NovascopeViewModel.kt - fix the loadFeeds method
     fun loadFeeds() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
@@ -80,6 +77,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                         allItems.addAll(items)
                     } catch (e: Exception) {
                         // Log error but continue with other sources
+                        Log.e("ViewModel", "Error loading feed: ${e.message}")
                     }
                 }
 
@@ -87,14 +85,14 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                     it.copy(
                         isLoading = false,
                         newsItems = allItems,
-                        error = null
+                        errorMessage = null  // Changed from error to errorMessage
                     )
                 }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        error = "Error loading feeds: ${e.message}"
+                        errorMessage = "Error loading feeds: ${e.message}"  // Changed from error to errorMessage
                     )
                 }
             }

@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import com.example.novascope.model.FeedCategory
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -58,7 +59,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.novascope.model.SampleData
 import com.example.novascope.ui.components.AddFeedDialog
-import com.example.novascope.ui.components.FeedCategory
 import com.example.novascope.ui.components.SmallNewsCard
 import com.example.novascope.ui.theme.NovascopeTheme
 

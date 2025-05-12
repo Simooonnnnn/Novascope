@@ -10,9 +10,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.example.novascope.model.FeedCategory  // Ensure correct import
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -22,7 +22,7 @@ fun AddFeedDialog(
     onAddFeed: (String, FeedCategory) -> Unit
 ) {
     var url by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf(FeedCategory.News) }
+    var selectedCategory by remember { mutableStateOf<FeedCategory>(FeedCategory.News) }
     var isUrlValid by remember { mutableStateOf(true) }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()

@@ -2,60 +2,23 @@
 package com.example.novascope.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.BrightnessAuto
-import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.FormatSize
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Language
-import androidx.compose.material.icons.outlined.LightMode
-import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.Psychology
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack  // Add this import
+import androidx.compose.material3.HorizontalDivider  //
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,18 +30,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.novascope.ui.theme.NovascopeTheme
 
+// Move these enums OUTSIDE the SettingsScreen composable function
+// Theme mode enum
+enum class ThemeMode(val title: String, val description: String) {
+    LIGHT("Light", "Always use light theme"),
+    DARK("Dark", "Always use dark theme"),
+    SYSTEM("System", "Follow system settings")
+}
+
+// Text size enum
+enum class TextSize(val title: String, val scaleFactor: Float) {
+    SMALL("Small", 0.8f),
+    MEDIUM("Medium", 1.0f),
+    LARGE("Large", 1.2f)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBackClick: () -> Unit = {}
 ) {
     var useDynamicColor by remember { mutableStateOf(true) }
-    var themeMode by remember { mutableStateOf(ThemeMode.SYSTEM) }
+    var themeMode by remember { mutableStateOf<ThemeMode>(ThemeMode.SYSTEM) }
     var enableNotifications by remember { mutableStateOf(true) }
     var enableAiSummary by remember { mutableStateOf(true) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
-    var textSize by remember { mutableStateOf(TextSize.MEDIUM) }
+    var textSize by remember { mutableStateOf<TextSize>(TextSize.MEDIUM) }
 
     Scaffold(
         topBar = {
@@ -87,7 +65,7 @@ fun SettingsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
-                            imageVector = Icons.Rounded.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,  // Updated reference
                             contentDescription = "Back"
                         )
                     }
@@ -142,7 +120,7 @@ fun SettingsScreen(
                     }
                 )
 
-                Divider(
+                HorizontalDivider(  // Changed from Divider
                     modifier = Modifier.padding(vertical = 8.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
@@ -438,19 +416,15 @@ fun SettingsToggleItem(
                 visible = subtitle.isNotEmpty(),
                 enter = fadeIn(
                     animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
-
-                    )
                 ) + expandVertically(
-
-                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
-                    )
+                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
                 ),
                 exit = fadeOut(
-                    animationSpec = tween(durationMillis = 150, easing = LinearEasing)                    )
+                    animationSpec = tween(durationMillis = 150, easing = LinearEasing)
                 ) + shrinkVertically(
-            animationSpec = tween(durationMillis = 150, easing = LinearEasing)
+                    animationSpec = tween(durationMillis = 150, easing = LinearEasing)
                 )
-            {
+            ) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
@@ -464,20 +438,6 @@ fun SettingsToggleItem(
             onCheckedChange = onToggle
         )
     }
-}
-
-// Theme mode enum
-enum class ThemeMode(val title: String, val description: String) {
-    LIGHT("Light", "Always use light theme"),
-    DARK("Dark", "Always use dark theme"),
-    SYSTEM("System", "Follow system settings")
-}
-
-// Text size enum
-enum class TextSize(val title: String, val scaleFactor: Float) {
-    SMALL("Small", 0.8f),
-    MEDIUM("Medium", 1.0f),
-    LARGE("Large", 1.2f)
 }
 
 @Preview(showBackground = true)
