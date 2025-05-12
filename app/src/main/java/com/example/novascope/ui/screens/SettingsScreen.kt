@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -64,7 +65,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.novascope.ui.animations.MaterialMotion
 import com.example.novascope.ui.theme.NovascopeTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -437,28 +437,20 @@ fun SettingsToggleItem(
             AnimatedVisibility(
                 visible = subtitle.isNotEmpty(),
                 enter = fadeIn(
-                    animationSpec = tween(
-                        durationMillis = MaterialMotion.DURATION_MEDIUM,
-                        easing = MaterialMotion.EmphasizedDecelerateEasing
+                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+
                     )
                 ) + expandVertically(
-                    animationSpec = tween(
-                        durationMillis = MaterialMotion.DURATION_MEDIUM,
-                        easing = MaterialMotion.EmphasizedDecelerateEasing
+
+                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
                     )
                 ),
                 exit = fadeOut(
-                    animationSpec = tween(
-                        durationMillis = MaterialMotion.DURATION_SHORT,
-                        easing = MaterialMotion.EmphasizedAccelerateEasing
-                    )
+                    animationSpec = tween(durationMillis = 150, easing = LinearEasing)                    )
                 ) + shrinkVertically(
-                    animationSpec = tween(
-                        durationMillis = MaterialMotion.DURATION_SHORT,
-                        easing = MaterialMotion.EmphasizedAccelerateEasing
-                    )
+            animationSpec = tween(durationMillis = 150, easing = LinearEasing)
                 )
-            ) {
+            {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,

@@ -38,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.example.novascope.model.NewsItem
 import com.example.novascope.model.SampleData
-import com.example.novascope.ui.animations.MaterialMotion
 import com.example.novascope.ui.theme.NovascopeTheme
 import kotlin.math.max
 import kotlin.math.min

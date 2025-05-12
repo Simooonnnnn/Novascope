@@ -57,7 +57,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.novascope.model.SampleData
-import com.example.novascope.ui.animations.MaterialMotion
 import com.example.novascope.ui.components.AddFeedDialog
 import com.example.novascope.ui.components.FeedCategory
 import com.example.novascope.ui.components.SmallNewsCard
