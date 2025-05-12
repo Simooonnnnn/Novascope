@@ -1,10 +1,10 @@
 package com.yourdomain.novascope.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -13,8 +13,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -28,10 +29,10 @@ import com.yourdomain.novascope.ui.screens.SavedScreen
 import com.yourdomain.novascope.ui.screens.SettingsScreen
 
 sealed class Screen(val route: String, val icon: ImageVector, val title: String) {
-    object Home : Screen("home", Icons.Filled.Home, "Home")
-    object Explore : Screen("explore", Icons.Filled.Explore, "Explore")
-    object Saved : Screen("saved", Icons.Outlined.BookmarkBorder, "Saved")
-    object Settings : Screen("settings", Icons.Filled.Settings, "Settings")
+    object Home : Screen("home", Icons.Rounded.Home, "Home")
+    object Explore : Screen("explore", Icons.Rounded.Explore, "Explore")
+    object Saved : Screen("saved", Icons.Rounded.BookmarkBorder, "Saved")
+    object Settings : Screen("settings", Icons.Rounded.Settings, "Settings")
 }
 
 val bottomNavItems = listOf(
@@ -49,16 +50,16 @@ fun NovascopeNavigation() {
         navController = navController,
         startDestination = Screen.Home.route
     ) {
-        composable(Screen.Home.route) {
+        composable(route = Screen.Home.route) {
             HomeScreen()
         }
-        composable(Screen.Explore.route) {
+        composable(route = Screen.Explore.route) {
             ExploreScreen()
         }
-        composable(Screen.Saved.route) {
+        composable(route = Screen.Saved.route) {
             SavedScreen()
         }
-        composable(Screen.Settings.route) {
+        composable(route = Screen.Settings.route) {
             SettingsScreen()
         }
     }
@@ -69,7 +70,8 @@ fun NovascopeNavigation() {
 @Composable
 fun NovascopeBottomNavBar(navController: NavController) {
     NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 8.dp
     ) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination

@@ -51,16 +51,16 @@ fun NovascopeApp() {
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(paddingValues)
         ) {
-            composable(Screen.Home.route) {
+            composable(route = Screen.Home.route) {
                 HomeScreen()
             }
-            composable(Screen.Explore.route) {
+            composable(route = Screen.Explore.route) {
                 ExploreScreen()
             }
-            composable(Screen.Saved.route) {
+            composable(route = Screen.Saved.route) {
                 SavedScreen()
             }
-            composable(Screen.Settings.route) {
+            composable(route = Screen.Settings.route) {
                 SettingsScreen()
             }
         }

@@ -1,17 +1,21 @@
 package com.yourdomain.novascope.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -21,6 +25,7 @@ import com.yourdomain.novascope.model.NewsItem
 import com.yourdomain.novascope.model.SampleData
 import com.yourdomain.novascope.ui.theme.NovascopeTheme
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LargeNewsCard(
     newsItem: NewsItem,
@@ -28,15 +33,34 @@ fun LargeNewsCard(
     onCardClick: (NewsItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isBookmarked by remember { mutableStateOf(newsItem.isBookmarked) }
+    var isPressed by remember { mutableStateOf(false) }
+
+    // Verwende animateFloatAsState statt Animatable für einfachere Implementierung
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        label = "card scale"
+    )
+
+    LaunchedEffect(newsItem.isBookmarked) {
+        isBookmarked = newsItem.isBookmarked
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 24.dp),
+            .padding(bottom = 24.dp)
+            .scale(scale),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        onClick = { onCardClick(newsItem) }
+        onClick = {
+            isPressed = true
+            // Simuliere drücken und loslassen
+            onCardClick(newsItem)
+            isPressed = false
+        }
     ) {
         Column {
             // Article image
@@ -106,14 +130,26 @@ fun LargeNewsCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                // Einfacherer Bookmark-Button mit Animation
+                var bookmarkPressed by remember { mutableStateOf(false) }
+                val bookmarkScale by animateFloatAsState(
+                    targetValue = if (bookmarkPressed) 0.8f else 1f,
+                    label = "bookmark scale"
+                )
+
                 IconButton(
-                    onClick = { onBookmarkClick(newsItem) },
-                    modifier = Modifier.size(24.dp)
+                    onClick = {
+                        bookmarkPressed = true
+                        onBookmarkClick(newsItem)
+                        isBookmarked = !isBookmarked
+                        bookmarkPressed = false
+                    },
+                    modifier = Modifier.scale(bookmarkScale)
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.BookmarkBorder,
+                        imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
                         contentDescription = "Bookmark",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -121,6 +157,7 @@ fun LargeNewsCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SmallNewsCard(
     newsItem: NewsItem,
@@ -128,17 +165,35 @@ fun SmallNewsCard(
     onCardClick: (NewsItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isBookmarked by remember { mutableStateOf(newsItem.isBookmarked) }
+    var isPressed by remember { mutableStateOf(false) }
+
+    // Vereinfachte Animation
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        label = "card scale"
+    )
+
+    LaunchedEffect(newsItem.isBookmarked) {
+        isBookmarked = newsItem.isBookmarked
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 24.dp),
-        shape = RoundedCornerShape(0.dp),
+            .padding(bottom = 24.dp)
+            .scale(scale),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        onClick = { onCardClick(newsItem) }
+        onClick = {
+            isPressed = true
+            onCardClick(newsItem)
+            isPressed = false
+        }
     ) {
-        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             // News source with icon
             Row(
                 modifier = Modifier.padding(bottom = 4.dp),
@@ -191,7 +246,7 @@ fun SmallNewsCard(
                     Box(
                         modifier = Modifier
                             .size(width = 100.dp, height = 72.dp)
-                            .clip(RoundedCornerShape(15.dp))
+                            .clip(RoundedCornerShape(12.dp))
                     ) {
                         Image(
                             painter = rememberAsyncImagePainter(url),
@@ -217,14 +272,26 @@ fun SmallNewsCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                // Einfacherer Bookmark-Button
+                var bookmarkPressed by remember { mutableStateOf(false) }
+                val bookmarkScale by animateFloatAsState(
+                    targetValue = if (bookmarkPressed) 0.8f else 1f,
+                    label = "bookmark scale"
+                )
+
                 IconButton(
-                    onClick = { onBookmarkClick(newsItem) },
-                    modifier = Modifier.size(24.dp)
+                    onClick = {
+                        bookmarkPressed = true
+                        onBookmarkClick(newsItem)
+                        isBookmarked = !isBookmarked
+                        bookmarkPressed = false
+                    },
+                    modifier = Modifier.scale(bookmarkScale)
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.BookmarkBorder,
+                        imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
                         contentDescription = "Bookmark",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
