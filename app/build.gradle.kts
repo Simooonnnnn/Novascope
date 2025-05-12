@@ -1,15 +1,16 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // Add the Compose Compiler plugin explicitly for Kotlin 2.0+
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
-    namespace = "com.yourdomain.novascope"
+    namespace = "com.example.novascope"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.yourdomain.novascope"
+        applicationId = "com.example.novascope"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
@@ -41,7 +42,7 @@ android {
         compose = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+        kotlinCompilerExtensionVersion = "1.5.10"
     }
     packaging {
         resources {
@@ -56,38 +57,42 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
 
-    // Compose libraries
+    // Compose BOM and UI
     implementation(platform("androidx.compose:compose-bom:2023.10.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
 
-    // Material 3 (with Material You support)
+    // Animation
+    implementation("androidx.compose.animation:animation")
+    implementation("androidx.compose.animation:animation-core")
+
+    // Material 3 and Icons
     implementation("androidx.compose.material3:material3:1.2.0")
     implementation("androidx.compose.material:material-icons-extended")
 
     // Navigation Compose
     implementation("androidx.navigation:navigation-compose:2.7.6")
 
-    // RSS parser libraries
+    // RSS parser library
     implementation("com.prof18.rssparser:rssparser:6.0.3")
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.4.0")
 
-    // Coroutines for background tasks
+    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 
-    // Testing dependencies
+    // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2023.10.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 
-    // Debug tools
+    // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

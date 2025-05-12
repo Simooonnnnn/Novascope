@@ -1,15 +1,17 @@
-package com.yourdomain.novascope.navigation
+package com.example.novascope.navigation
 
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,10 +25,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.yourdomain.novascope.ui.screens.ExploreScreen
-import com.yourdomain.novascope.ui.screens.HomeScreen
-import com.yourdomain.novascope.ui.screens.SavedScreen
-import com.yourdomain.novascope.ui.screens.SettingsScreen
+import com.example.novascope.ui.screens.ExploreScreen
+import com.example.novascope.ui.screens.HomeScreen
+import com.example.novascope.ui.screens.SavedScreen
+import com.example.novascope.ui.screens.SettingsScreen
 
 sealed class Screen(val route: String, val icon: ImageVector, val title: String) {
     object Home : Screen("home", Icons.Rounded.Home, "Home")
@@ -46,25 +48,30 @@ val bottomNavItems = listOf(
 fun NovascopeNavigation() {
     val navController = rememberNavController()
 
-    NavHost(
-        navController = navController,
-        startDestination = Screen.Home.route
-    ) {
-        composable(route = Screen.Home.route) {
-            HomeScreen()
+    Scaffold(
+        bottomBar = {
+            NovascopeBottomNavBar(navController = navController)
         }
-        composable(route = Screen.Explore.route) {
-            ExploreScreen()
-        }
-        composable(route = Screen.Saved.route) {
-            SavedScreen()
-        }
-        composable(route = Screen.Settings.route) {
-            SettingsScreen()
+    ) { paddingValues ->
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Home.route,
+            modifier = Modifier.padding(paddingValues)
+        ) {
+            composable(route = Screen.Home.route) {
+                HomeScreen()
+            }
+            composable(route = Screen.Explore.route) {
+                ExploreScreen()
+            }
+            composable(route = Screen.Saved.route) {
+                SavedScreen()
+            }
+            composable(route = Screen.Settings.route) {
+                SettingsScreen()
+            }
         }
     }
-
-    NovascopeBottomNavBar(navController = navController)
 }
 
 @Composable
