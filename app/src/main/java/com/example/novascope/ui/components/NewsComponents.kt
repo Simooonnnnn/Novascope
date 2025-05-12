@@ -1,9 +1,12 @@
+// app/src/main/java/com/example/novascope/ui/components/NewsComponents.kt
 package com.example.novascope.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -20,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,7 +47,7 @@ fun LargeNewsCard(
     var isBookmarked by remember { mutableStateOf(newsItem.isBookmarked) }
     var isPressed by remember { mutableStateOf(false) }
 
-    // Enhanced animations with proper Material motion
+    // Enhanced animations with Material motion
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.97f else 1f,
         animationSpec = spring(
@@ -57,7 +61,8 @@ fun LargeNewsCard(
     val elevation by animateFloatAsState(
         targetValue = if (isPressed) 1f else 4f,
         animationSpec = tween(
-            durationMillis = MaterialMotion.DURATION_SHORT
+            durationMillis = MaterialMotion.DURATION_SHORT,
+            easing = MaterialMotion.StandardEasing
         ),
         label = "card elevation"
     )
@@ -98,7 +103,15 @@ fun LargeNewsCard(
                             .height(186.dp),
                         contentScale = ContentScale.Crop
                     )
-                }
+                } ?: Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(186.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                        )
+                )
 
                 // Actions overlay
                 Row(
@@ -173,11 +186,18 @@ fun LargeNewsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = newsItem.publishTime,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(0.dp)
+                ) {
+                    Text(
+                        text = newsItem.publishTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
 
                 // Enhanced bookmark button with better animation
                 var bookmarkPressed by remember { mutableStateOf(false) }
@@ -190,25 +210,28 @@ fun LargeNewsCard(
                     label = "bookmark scale"
                 )
 
-                FilledTonalIconButton(
+                val bookmarkColor by animateColorAsState(
+                    targetValue = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    animationSpec = tween(
+                        durationMillis = MaterialMotion.DURATION_SHORT,
+                        easing = MaterialMotion.StandardEasing
+                    ),
+                    label = "bookmark color"
+                )
+
+                IconButton(
                     onClick = {
                         bookmarkPressed = true
                         onBookmarkClick(newsItem)
                         isBookmarked = !isBookmarked
                         bookmarkPressed = false
                     },
-                    modifier = Modifier.scale(bookmarkScale),
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                        contentColor = if (isBookmarked)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    modifier = Modifier.scale(bookmarkScale)
                 ) {
                     Icon(
                         imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                        contentDescription = "Bookmark"
+                        contentDescription = "Bookmark",
+                        tint = bookmarkColor
                     )
                 }
             }
@@ -242,9 +265,20 @@ fun SmallNewsCard(
     val elevation by animateFloatAsState(
         targetValue = if (isPressed) 1f else 3f,
         animationSpec = tween(
-            durationMillis = MaterialMotion.DURATION_SHORT
+            durationMillis = MaterialMotion.DURATION_SHORT,
+            easing = MaterialMotion.StandardEasing
         ),
         label = "card elevation"
+    )
+
+    // Bookmark color animation
+    val bookmarkColor by animateColorAsState(
+        targetValue = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(
+            durationMillis = MaterialMotion.DURATION_SHORT,
+            easing = MaterialMotion.StandardEasing
+        ),
+        label = "bookmark color"
     )
 
     LaunchedEffect(newsItem.isBookmarked) {
@@ -338,7 +372,7 @@ fun SmallNewsCard(
                     Surface(
                         modifier = Modifier
                             .size(width = 100.dp, height = 72.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(15.dp),
                         shadowElevation = 2.dp
                     ) {
                         Image(
@@ -359,17 +393,17 @@ fun SmallNewsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = newsItem.publishTime,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .background(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ) {
+                    Text(
+                        text = newsItem.publishTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
 
                 // Enhanced bookmark button with spring animation
                 var bookmarkPressed by remember { mutableStateOf(false) }
@@ -394,10 +428,7 @@ fun SmallNewsCard(
                     Icon(
                         imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
                         contentDescription = "Bookmark",
-                        tint = if (isBookmarked)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = bookmarkColor
                     )
                 }
             }

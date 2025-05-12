@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/novascope/ui/screens/HomeScreen.kt
 package com.example.novascope.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
@@ -7,10 +8,13 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Notifications
@@ -21,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
@@ -39,7 +44,7 @@ import com.example.novascope.ui.theme.NovascopeTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier
@@ -49,6 +54,7 @@ fun HomeScreen(
     var showFilterMenu by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     val scope = rememberCoroutineScope()
+    val lazyListState = rememberLazyListState()
 
     // Button animations with Material motion
     var refreshButtonPressed by remember { mutableStateOf(false) }
@@ -79,6 +85,16 @@ fun HomeScreen(
         label = "search button scale"
     )
 
+    // Rotation animation for refresh button
+    val refreshRotation by animateFloatAsState(
+        targetValue = if (isRefreshing) 360f else 0f,
+        animationSpec = tween(
+            durationMillis = 800,
+            easing = MaterialMotion.StandardEasing
+        ),
+        label = "refresh rotation"
+    )
+
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
             // Simulate loading
@@ -92,13 +108,15 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_novascope_logo),
-                        contentDescription = "Novascope Logo",
-                        contentScale = ContentScale.Fit,
-                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
-                        modifier = Modifier.height(24.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Novascope",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 },
                 actions = {
                     // Search button with animation
@@ -157,7 +175,7 @@ fun HomeScreen(
                             contentDescription = "Refresh feeds",
                             tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.graphicsLayer {
-                                rotationZ = if (isRefreshing) 180f else 0f
+                                rotationZ = refreshRotation
                             }
                         )
                     }
@@ -202,6 +220,7 @@ fun HomeScreen(
             }
 
             LazyColumn(
+                state = lazyListState,
                 contentPadding = PaddingValues(
                     top = innerPadding.calculateTopPadding() + 16.dp,
                     bottom = innerPadding.calculateBottomPadding() + 16.dp,
@@ -213,8 +232,28 @@ fun HomeScreen(
                 item {
                     AnimatedVisibility(
                         visible = true,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
+                        enter = fadeIn(
+                            animationSpec = tween(
+                                durationMillis = MaterialMotion.DURATION_MEDIUM,
+                                easing = MaterialMotion.EmphasizedDecelerateEasing
+                            )
+                        ) + expandVertically(
+                            animationSpec = tween(
+                                durationMillis = MaterialMotion.DURATION_MEDIUM,
+                                easing = MaterialMotion.EmphasizedDecelerateEasing
+                            )
+                        ),
+                        exit = fadeOut(
+                            animationSpec = tween(
+                                durationMillis = MaterialMotion.DURATION_SHORT,
+                                easing = MaterialMotion.EmphasizedAccelerateEasing
+                            )
+                        ) + shrinkVertically(
+                            animationSpec = tween(
+                                durationMillis = MaterialMotion.DURATION_SHORT,
+                                easing = MaterialMotion.EmphasizedAccelerateEasing
+                            )
+                        )
                     ) {
                         Text(
                             text = "For You",
@@ -229,8 +268,28 @@ fun HomeScreen(
                     newsItems.firstOrNull { it.isBigArticle }?.let { item ->
                         AnimatedVisibility(
                             visible = true,
-                            enter = fadeIn() + expandVertically(),
-                            exit = fadeOut() + shrinkVertically()
+                            enter = fadeIn(
+                                animationSpec = tween(
+                                    durationMillis = MaterialMotion.DURATION_MEDIUM,
+                                    easing = MaterialMotion.EmphasizedDecelerateEasing
+                                )
+                            ) + expandVertically(
+                                animationSpec = tween(
+                                    durationMillis = MaterialMotion.DURATION_MEDIUM,
+                                    easing = MaterialMotion.EmphasizedDecelerateEasing
+                                )
+                            ),
+                            exit = fadeOut(
+                                animationSpec = tween(
+                                    durationMillis = MaterialMotion.DURATION_SHORT,
+                                    easing = MaterialMotion.EmphasizedAccelerateEasing
+                                )
+                            ) + shrinkVertically(
+                                animationSpec = tween(
+                                    durationMillis = MaterialMotion.DURATION_SHORT,
+                                    easing = MaterialMotion.EmphasizedAccelerateEasing
+                                )
+                            )
                         ) {
                             LargeNewsCard(
                                 newsItem = item,
@@ -248,12 +307,35 @@ fun HomeScreen(
                     }
                 }
 
-                // Rest are small cards
-                items(newsItems.filterNot { it.isBigArticle }) { item ->
+                // Rest are small cards with animations
+                items(
+                    items = newsItems.filterNot { it.isBigArticle },
+                    key = { it.id }
+                ) { item ->
                     AnimatedVisibility(
                         visible = true,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
+                        enter = fadeIn(
+                            animationSpec = tween(
+                                durationMillis = MaterialMotion.DURATION_MEDIUM,
+                                easing = MaterialMotion.EmphasizedDecelerateEasing
+                            )
+                        ) + expandVertically(
+                            animationSpec = tween(
+                                durationMillis = MaterialMotion.DURATION_MEDIUM,
+                                easing = MaterialMotion.EmphasizedDecelerateEasing
+                            )
+                        ),
+                        exit = fadeOut(
+                            animationSpec = tween(
+                                durationMillis = MaterialMotion.DURATION_SHORT,
+                                easing = MaterialMotion.EmphasizedAccelerateEasing
+                            )
+                        ) + shrinkVertically(
+                            animationSpec = tween(
+                                durationMillis = MaterialMotion.DURATION_SHORT,
+                                easing = MaterialMotion.EmphasizedAccelerateEasing
+                            )
+                        )
                     ) {
                         SmallNewsCard(
                             newsItem = item,
@@ -265,13 +347,19 @@ fun HomeScreen(
                                 }
                             },
                             onCardClick = { /* TODO: Open article detail */ },
-                            onMoreClick = { /* TODO: Show more options */ }
+                            onMoreClick = { /* TODO: Show more options */ },
+                            modifier = Modifier.animateItemPlacement(
+                                animationSpec = tween(
+                                    durationMillis = MaterialMotion.DURATION_MEDIUM,
+                                    easing = MaterialMotion.StandardEasing
+                                )
+                            )
                         )
                     }
                 }
             }
 
-            // Filter menu dropdown
+            // Filter menu dropdown with Material 3 styling
             DropdownMenu(
                 expanded = showFilterMenu,
                 onDismissRequest = { showFilterMenu = false },
@@ -290,6 +378,12 @@ fun HomeScreen(
                     onClick = {
                         showFilterMenu = false
                         // TODO: Filter by all feeds
+                    },
+                    leadingIcon = {
+                        RadioButton(
+                            selected = true,
+                            onClick = null
+                        )
                     }
                 )
                 DropdownMenuItem(
@@ -297,6 +391,12 @@ fun HomeScreen(
                     onClick = {
                         showFilterMenu = false
                         // TODO: Filter by news category
+                    },
+                    leadingIcon = {
+                        RadioButton(
+                            selected = false,
+                            onClick = null
+                        )
                     }
                 )
                 DropdownMenuItem(
@@ -304,6 +404,12 @@ fun HomeScreen(
                     onClick = {
                         showFilterMenu = false
                         // TODO: Filter by technology category
+                    },
+                    leadingIcon = {
+                        RadioButton(
+                            selected = false,
+                            onClick = null
+                        )
                     }
                 )
                 DropdownMenuItem(
@@ -311,6 +417,12 @@ fun HomeScreen(
                     onClick = {
                         showFilterMenu = false
                         // TODO: Filter by science category
+                    },
+                    leadingIcon = {
+                        RadioButton(
+                            selected = false,
+                            onClick = null
+                        )
                     }
                 )
             }
