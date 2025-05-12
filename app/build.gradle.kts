@@ -52,6 +52,9 @@ android {
 }
 
 dependencies {
+    // JSON parsing with Gson
+    implementation("com.google.code.gson:gson:2.10.1")
+
     // Splash Screen API
     implementation("androidx.core:core-splashscreen:1.0.0")
     implementation("androidx.compose.material3:material3-window-size-class:1.2.0")

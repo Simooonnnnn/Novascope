@@ -27,22 +27,31 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.example.novascope.ui.screens.ArticleDetailScreen
 import com.example.novascope.ui.screens.ExploreScreen
 import com.example.novascope.ui.screens.HomeScreen
 import com.example.novascope.ui.screens.SavedScreen
 import com.example.novascope.ui.screens.SettingsScreen
 import com.example.novascope.ui.theme.NovascopeTheme
+import com.example.novascope.viewmodel.NovascopeViewModel
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 
 class MainActivity : ComponentActivity() {
@@ -92,6 +101,16 @@ sealed class Screen(
         Icons.Outlined.Settings,
         "Settings"
     )
+
+    // Detail screen with argument
+    object ArticleDetail : Screen(
+        "article/{articleId}",
+        Icons.Filled.Home, // Not shown in bottom nav
+        Icons.Outlined.Home, // Not shown in bottom nav
+        "Article"
+    ) {
+        fun createRoute(articleId: String) = "article/$articleId"
+    }
 }
 
 // List of bottom navigation items
@@ -120,10 +139,28 @@ fun NovascopeApp() {
 
         // Set up navigation
         val navController = rememberNavController()
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
+
+        // Show bottom nav only on main screens
+        val showBottomNav = remember(currentRoute) {
+            bottomNavItems.any { it.route == currentRoute }
+        }
+
+        // Get local context for ViewModel
+        val context = LocalContext.current
+
+        // Create ViewModel
+        val viewModel: NovascopeViewModel = viewModel { NovascopeViewModel(context) }
+
+        // State for navigation
+        var selectedArticleId by remember { mutableStateOf<String?>(null) }
 
         Scaffold(
             bottomBar = {
-                NovascopeBottomNav(navController)
+                if (showBottomNav) {
+                    NovascopeBottomNav(navController)
+                }
             }
         ) { paddingValues ->
             Surface(
@@ -137,16 +174,52 @@ fun NovascopeApp() {
                     startDestination = Screen.Home.route
                 ) {
                     composable(Screen.Home.route) {
-                        HomeScreen()
+                        HomeScreen(
+                            viewModel = viewModel,
+                            onNewsItemClick = { articleId ->
+                                navController.navigate(Screen.ArticleDetail.createRoute(articleId))
+                            },
+                            onAddFeedClick = {
+                                navController.navigate(Screen.Explore.route)
+                            }
+                        )
                     }
                     composable(Screen.Explore.route) {
-                        ExploreScreen()
+                        ExploreScreen(
+                            viewModel = viewModel,
+                            onNewsItemClick = { articleId ->
+                                navController.navigate(Screen.ArticleDetail.createRoute(articleId))
+                            }
+                        )
                     }
                     composable(Screen.Saved.route) {
-                        SavedScreen()
+                        SavedScreen(
+                            viewModel = viewModel,
+                            onNewsItemClick = { articleId ->
+                                navController.navigate(Screen.ArticleDetail.createRoute(articleId))
+                            }
+                        )
                     }
                     composable(Screen.Settings.route) {
-                        SettingsScreen()
+                        SettingsScreen(
+                            onBackClick = { /* No op - bottom nav handles it */ }
+                        )
+                    }
+
+                    // Article detail screen with arguments
+                    composable(
+                        route = Screen.ArticleDetail.route,
+                        arguments = listOf(
+                            navArgument("articleId") { type = NavType.StringType }
+                        )
+                    ) { backStackEntry ->
+                        val articleId = backStackEntry.arguments?.getString("articleId") ?: return@composable
+
+                        ArticleDetailScreen(
+                            articleId = articleId,
+                            viewModel = viewModel,
+                            onBackClick = { navController.popBackStack() }
+                        )
                     }
                 }
             }

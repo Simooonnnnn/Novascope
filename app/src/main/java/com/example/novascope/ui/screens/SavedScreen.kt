@@ -14,15 +14,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.SmallNewsCard
+import com.example.novascope.viewmodel.NovascopeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedScreen(
-    savedItems: List<NewsItem> = emptyList(),
-    onNewsItemClick: (NewsItem) -> Unit = {},
-    onBookmarkClick: (NewsItem) -> Unit = {}
+    viewModel: NovascopeViewModel,
+    onNewsItemClick: (String) -> Unit = {},
 ) {
-    var items by remember { mutableStateOf(savedItems) }
+    val uiState by viewModel.uiState.collectAsState()
+    val bookmarkedItems = uiState.bookmarkedItems
 
     Scaffold(
         topBar = {
@@ -31,7 +32,7 @@ fun SavedScreen(
             )
         }
     ) { innerPadding ->
-        if (items.isEmpty()) {
+        if (bookmarkedItems.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -78,16 +79,19 @@ fun SavedScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(items) { item ->
+                items(bookmarkedItems) { item ->
                     SmallNewsCard(
                         newsItem = item,
                         onBookmarkClick = {
-                            onBookmarkClick(item)
-                            // Remove item from the list when unbookmarked
-                            items = items.filter { it.id != item.id }
+                            viewModel.toggleBookmark(item.id)
                         },
-                        onCardClick = { onNewsItemClick(item) }
+                        onCardClick = { onNewsItemClick(item.id) }
                     )
+                }
+
+                // Extra space at bottom
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }

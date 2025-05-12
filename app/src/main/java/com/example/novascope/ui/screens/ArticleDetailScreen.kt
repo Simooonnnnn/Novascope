@@ -1,12 +1,11 @@
 // app/src/main/java/com/example/novascope/ui/screens/ArticleDetailScreen.kt
 package com.example.novascope.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -18,49 +17,52 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
+import com.example.novascope.ai.SummaryState
 import com.example.novascope.model.NewsItem
-import com.example.novascope.model.SampleData
-import com.example.novascope.ui.theme.NovascopeTheme
-import kotlin.math.max
-import kotlin.math.min
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.example.novascope.ui.components.AiSummaryCard
+import com.example.novascope.viewmodel.NovascopeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArticleDetailScreen(
-    newsItem: NewsItem,
-    onBackClick: () -> Unit,
-    onBookmarkClick: (NewsItem) -> Unit,
-    onShareClick: (NewsItem) -> Unit,
-    onOpenInBrowserClick: (NewsItem) -> Unit,
-    showAiSummary: Boolean = false,
-    modifier: Modifier = Modifier
+    articleId: String,
+    viewModel: NovascopeViewModel,
+    onBackClick: () -> Unit
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+    val article = uiState.newsItems.find { it.id == articleId } ?: return
+    val summaryState = uiState.summaryState
+    val context = LocalContext.current
+
+    // Select article for AI summary
+    LaunchedEffect(articleId) {
+        viewModel.selectArticle(articleId)
+    }
+
     val scrollState = rememberScrollState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    var isBookmarked by remember { mutableStateOf(newsItem.isBookmarked) }
-    var showSummary by remember { mutableStateOf(showAiSummary) }
-    val scope = rememberCoroutineScope()
+    var showSummary by remember { mutableStateOf(true) }
+
+    // Track if article is bookmarked
+    val isBookmarked = remember(article) { article.isBookmarked }
 
     // Calculate the parallax effect for the header image
     val headerImageHeight = 240.dp
@@ -70,15 +72,12 @@ fun ArticleDetailScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(  // Changed from SmallTopAppBar
-                title = {
-                    // Empty title - we'll show it in the content to achieve
-                    // a more custom scrolling effect
-                },
+            TopAppBar(
+                title = { /* Empty title */ },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,  // Updated reference
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "Back"
                         )
                     }
@@ -94,10 +93,7 @@ fun ArticleDetailScreen(
                     }
 
                     // Bookmark button
-                    IconButton(onClick = {
-                        isBookmarked = !isBookmarked
-                        onBookmarkClick(newsItem)
-                    }) {
+                    IconButton(onClick = { viewModel.toggleBookmark(article.id) }) {
                         Icon(
                             imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
                             contentDescription = "Bookmark Article",
@@ -106,7 +102,18 @@ fun ArticleDetailScreen(
                     }
 
                     // Share button
-                    IconButton(onClick = { onShareClick(newsItem) }) {
+                    IconButton(onClick = {
+                        article.url?.let { url ->
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, url)
+                                putExtra(Intent.EXTRA_TITLE, article.title)
+                                type = "text/plain"
+                            }
+                            val shareIntent = Intent.createChooser(sendIntent, null)
+                            context.startActivity(shareIntent)
+                        }
+                    }) {
                         Icon(
                             imageVector = Icons.Rounded.Share,
                             contentDescription = "Share Article"
@@ -121,15 +128,20 @@ fun ArticleDetailScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { onOpenInBrowserClick(newsItem) },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.OpenInBrowser,
-                    contentDescription = "Open in Browser"
-                )
+            article.url?.let { url ->
+                FloatingActionButton(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        context.startActivity(intent)
+                    },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.OpenInBrowser,
+                        contentDescription = "Open in Browser"
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -150,7 +162,7 @@ fun ArticleDetailScreen(
                         .fillMaxWidth()
                         .height(headerImageHeight)
                 ) {
-                    newsItem.imageUrl?.let { url ->
+                    article.imageUrl?.let { url ->
                         Image(
                             painter = rememberAsyncImagePainter(url),
                             contentDescription = "Article featured image",
@@ -201,7 +213,7 @@ fun ArticleDetailScreen(
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.primaryContainer)
                             ) {
-                                newsItem.sourceIconUrl?.let { url ->
+                                article.sourceIconUrl?.let { url ->
                                     Image(
                                         painter = rememberAsyncImagePainter(url),
                                         contentDescription = "Source icon",
@@ -214,7 +226,7 @@ fun ArticleDetailScreen(
                             Spacer(modifier = Modifier.width(8.dp))
 
                             Text(
-                                text = newsItem.sourceName,
+                                text = article.sourceName,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = Color.White
                             )
@@ -226,7 +238,7 @@ fun ArticleDetailScreen(
                                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
                             ) {
                                 Text(
-                                    text = newsItem.publishTime,
+                                    text = article.publishTime,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -236,7 +248,7 @@ fun ArticleDetailScreen(
 
                         // Title
                         Text(
-                            text = newsItem.title,
+                            text = article.title,
                             style = MaterialTheme.typography.headlineSmall.copy(
                                 fontWeight = FontWeight.Bold
                             ),
@@ -248,55 +260,14 @@ fun ArticleDetailScreen(
                 // AI Summary Card (if enabled)
                 AnimatedVisibility(
                     visible = showSummary,
-                    enter = fadeIn(animationSpec = tween(durationMillis = 300)) +
-                            slideInVertically(
-                                animationSpec = tween(durationMillis = 300),
-                                initialOffsetY = { -it }
-                            ),
-                    exit = fadeOut(animationSpec = tween(durationMillis = 200)) +
-                            slideOutVertically(
-                                animationSpec = tween(durationMillis = 200),
-                                targetOffsetY = { -it }
-                            )
+                    enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+                    exit = fadeOut() + slideOutVertically(targetOffsetY = { -it })
                 ) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Psychology,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                Text(
-                                    text = "AI Summary",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
-
-                            Text(
-                                text = "This article discusses the latest advancements in AI technology, focusing on small language models that can run efficiently on mobile devices. These models offer privacy benefits by processing data locally without sending it to remote servers.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.9f)
-                            )
-                        }
-                    }
+                    AiSummaryCard(
+                        summaryState = summaryState,
+                        onRetry = { viewModel.selectArticle(article.id) },
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
                 }
 
                 // Article content
@@ -306,7 +277,7 @@ fun ArticleDetailScreen(
                         .padding(16.dp)
                 ) {
                     Text(
-                        text = newsItem.content ?: getPlaceholderContent(),
+                        text = article.content ?: "No content available for this article. Please open in browser to read the full article.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -315,38 +286,5 @@ fun ArticleDetailScreen(
                 }
             }
         }
-    }
-}
-
-private fun getPlaceholderContent(): String {
-    return """
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec auctor, nisl eget ultricies lacinia, nisl nisl aliquam nisl, eget ultricies nisl nisl eget nisl. Donec auctor, nisl eget ultricies lacinia, nisl nisl aliquam nisl, eget ultricies nisl nisl eget nisl.
-        
-        Artificial intelligence (AI) has seen tremendous growth over the past decade, with applications spanning across industries from healthcare to finance. One of the most exciting developments is the ability to run powerful language models directly on mobile devices.
-        
-        These on-device models, often referred to as "small language models" or SLMs, represent a significant shift in how AI can be deployed. Unlike their larger counterparts that require cloud infrastructure, these compact models can operate efficiently within the constraints of a smartphone's processing capabilities.
-        
-        The primary advantage of on-device AI is privacy. Since data never leaves the user's device, sensitive information remains protected. This aligns with growing consumer concerns about data privacy and security in an increasingly connected world.
-        
-        Performance is another consideration. By eliminating the need for network requests, on-device models can respond instantly, even when internet connectivity is limited or unavailable. This makes them ideal for applications like real-time text summarization, language translation, and content recommendation.
-        
-        However, challenges remain. These smaller models don't match the capabilities of larger cloud-based systems, requiring careful optimization to balance performance with accuracy. Developers must make thoughtful trade-offs between model size, speed, and quality of results.
-        
-        Despite these challenges, the future looks promising for on-device AI. As mobile hardware continues to advance and model optimization techniques improve, we can expect these systems to become increasingly capable while maintaining their privacy and performance advantages.
-    """.trimIndent()
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ArticleDetailScreenPreview() {
-    NovascopeTheme {
-        ArticleDetailScreen(
-            newsItem = SampleData.newsItems[0].copy(content = getPlaceholderContent()),
-            onBackClick = {},
-            onBookmarkClick = {},
-            onShareClick = {},
-            onOpenInBrowserClick = {},
-            showAiSummary = true
-        )
     }
 }

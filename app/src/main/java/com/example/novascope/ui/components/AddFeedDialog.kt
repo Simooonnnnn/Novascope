@@ -4,16 +4,21 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.RssFeed
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.example.novascope.model.FeedCategory  // Ensure correct import
+import com.example.novascope.model.FeedCategory
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import kotlinx.coroutines.launch
 
 @Composable
@@ -24,6 +29,9 @@ fun AddFeedDialog(
     var url by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<FeedCategory>(FeedCategory.News) }
     var isUrlValid by remember { mutableStateOf(true) }
+    var isValidating by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
 
@@ -71,7 +79,8 @@ fun AddFeedDialog(
                     value = url,
                     onValueChange = {
                         url = it
-                        isUrlValid = validateUrl(it)
+                        isUrlValid = true // Reset validation when typing
+                        errorMessage = ""
                     },
                     label = { Text("Feed URL") },
                     placeholder = { Text("https://example.com/rss") },
@@ -89,14 +98,27 @@ fun AddFeedDialog(
                 )
 
                 if (!isUrlValid) {
-                    Text(
-                        text = "Please enter a valid RSS feed URL",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .align(Alignment.Start)
-                            .padding(start = 16.dp, top = 4.dp)
-                    )
+                            .padding(start = 8.dp, top = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = errorMessage.ifEmpty { "Please enter a valid RSS feed URL" },
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -110,16 +132,26 @@ fun AddFeedDialog(
                         .padding(bottom = 8.dp)
                 )
 
-                // Category chips
+                // Category chips in a simple Row with horizontal scroll
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
                 ) {
+                    // Display all categories
                     FeedCategory.values().forEach { category ->
                         FilterChip(
                             selected = category == selectedCategory,
                             onClick = { selectedCategory = category },
-                            label = { Text(text = category.title) }
+                            label = { Text(text = category.title) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = category.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         )
                     }
                 }
@@ -129,8 +161,17 @@ fun AddFeedDialog(
                 // Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (isValidating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                    }
+
                     TextButton(onClick = onDismiss) {
                         Text("Cancel")
                     }
@@ -139,12 +180,27 @@ fun AddFeedDialog(
 
                     Button(
                         onClick = {
-                            if (url.isNotBlank() && isUrlValid) {
-                                onAddFeed(url, selectedCategory)
-                                onDismiss()
+                            // Basic validation first
+                            if (url.isBlank()) {
+                                isUrlValid = false
+                                errorMessage = "URL cannot be empty"
+                                return@Button
                             }
+
+                            if (!validateBasicUrl(url)) {
+                                isUrlValid = false
+                                errorMessage = "Invalid URL format"
+                                return@Button
+                            }
+
+                            // Attempt to validate against standard URL schemes
+                            val formattedUrl = formatUrl(url)
+
+                            // Add the feed
+                            onAddFeed(formattedUrl, selectedCategory)
+                            onDismiss()
                         },
-                        enabled = url.isNotBlank() && isUrlValid
+                        enabled = !isValidating
                     ) {
                         Text("Add Feed")
                     }
@@ -154,7 +210,22 @@ fun AddFeedDialog(
     }
 }
 
-private fun validateUrl(url: String): Boolean {
-    // Simple validation - more robust implementation would be better
-    return url.isEmpty() || (url.startsWith("http") && url.contains("."))
+// More robust URL validation
+private fun validateBasicUrl(url: String): Boolean {
+    // Basic URL validation - should start with http:// or https:// and contain at least one dot
+    return url.isNotBlank() &&
+            (url.startsWith("http://") || url.startsWith("https://")) &&
+            url.contains(".")
+}
+
+// Format URL to ensure proper scheme
+private fun formatUrl(url: String): String {
+    var formattedUrl = url.trim()
+
+    // Add https:// if no scheme is present
+    if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
+        formattedUrl = "https://$formattedUrl"
+    }
+
+    return formattedUrl
 }

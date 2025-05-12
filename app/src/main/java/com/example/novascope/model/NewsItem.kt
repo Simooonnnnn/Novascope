@@ -7,10 +7,12 @@ data class NewsItem(
     val sourceIconUrl: String?,
     val sourceName: String,
     val publishTime: String,
+    val publishTimeMillis: Long = System.currentTimeMillis(), // Added for sorting
     val isBookmarked: Boolean = false,
     val isBigArticle: Boolean = false,
     val content: String? = null,
-    val url: String? = null
+    val url: String? = null,
+    val feedId: String? = null // To track which feed an item came from
 )
 
 // Sample data for preview

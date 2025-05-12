@@ -8,9 +8,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import com.example.novascope.model.FeedCategory
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,14 +21,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.RssFeed
+import androidx.compose.material.icons.outlined.RssFeed
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,67 +50,77 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.example.novascope.model.Feed
+import com.example.novascope.model.FeedCategory
 import com.example.novascope.model.SampleData
 import com.example.novascope.ui.components.AddFeedDialog
 import com.example.novascope.ui.components.SmallNewsCard
-import com.example.novascope.ui.theme.NovascopeTheme
+import com.example.novascope.viewmodel.NovascopeViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
-    onAddFeed: (String, FeedCategory) -> Unit = { _, _ -> },
+    viewModel: NovascopeViewModel,
     onNewsItemClick: (String) -> Unit = {}
 ) {
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    val feeds by viewModel.feeds.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+
     var searchQuery by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf<String?>(null) }
+    var selectedCategoryFilter by remember { mutableStateOf<FeedCategory?>(null) }
     var showAddFeedDialog by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
+    var isSearching by remember { mutableStateOf(false) }
+    var searchResults by remember { mutableStateOf(emptyList<Feed>()) }
 
-    // Sample categories
-    val categories = remember {
-        listOf("All", "News", "Technology", "Science", "Finance", "Sports", "Entertainment")
+    val scope = rememberCoroutineScope()
+
+    // Filter feeds by category
+    val displayFeeds = if (selectedCategoryFilter != null) {
+        feeds.filter { it.category == selectedCategoryFilter }
+    } else {
+        feeds
     }
 
-    // Sample popular feeds
-    val popularFeeds = remember {
-        listOf(
-            "The New York Times" to "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
-            "BBC News" to "http://feeds.bbci.co.uk/news/rss.xml",
-            "TechCrunch" to "https://techcrunch.com/feed/",
-            "Wired" to "https://www.wired.com/feed/rss",
-            "Scientific American" to "https://rss.sciam.com/ScientificAmerican-Global",
-            "ESPN" to "https://www.espn.com/espn/rss/news",
-            "The Verge" to "https://www.theverge.com/rss/index.xml"
-        )
-    }
-
-    // Sample search results
-    val searchResults = remember {
+    // Handle search
+    LaunchedEffect(searchQuery, feeds) {
         if (searchQuery.isNotEmpty()) {
-            SampleData.newsItems.filter {
-                it.title.contains(searchQuery, ignoreCase = true) ||
-                        it.sourceName.contains(searchQuery, ignoreCase = true)
+            isSearching = true
+            delay(300) // Debounce
+
+            searchResults = feeds.filter {
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                        it.url.contains(searchQuery, ignoreCase = true)
             }
+
+            isSearching = false
         } else {
-            emptyList()
+            searchResults = emptyList()
         }
     }
 
@@ -108,7 +128,7 @@ fun ExploreScreen(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = { Text("Explore") },
+                title = { Text("Explore Feeds") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
@@ -117,7 +137,7 @@ fun ExploreScreen(
                 actions = {
                     IconButton(onClick = { showAddFeedDialog = true }) {
                         Icon(
-                            imageVector = Icons.Rounded.Add,
+                            imageVector = Icons.Filled.Add,
                             contentDescription = "Add Feed"
                         )
                     }
@@ -133,22 +153,19 @@ fun ExploreScreen(
             // Search field
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = {
-                    searchQuery = it
-                    isLoading = it.isNotEmpty()
-                },
+                onValueChange = { searchQuery = it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search for feeds or news...") },
+                placeholder = { Text("Search for feeds...") },
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.Rounded.Search,
+                        imageVector = Icons.Filled.Search,
                         contentDescription = "Search"
                     )
                 },
                 trailingIcon = {
-                    if (isLoading && searchQuery.isNotEmpty()) {
+                    if (isSearching) {
                         CircularProgressIndicator(
                             modifier = Modifier.padding(end = 8.dp),
                             strokeWidth = 2.dp
@@ -160,15 +177,34 @@ fun ExploreScreen(
             )
 
             // Category filters
-            LazyRow(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(vertical = 8.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(categories) { category ->
-                    val isSelected = category == selectedCategory || (category == "All" && selectedCategory == null)
+                // Add padding at start
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // "All" category
+                FilterChip(
+                    selected = selectedCategoryFilter == null,
+                    onClick = { selectedCategoryFilter = null },
+                    label = {
+                        Text(
+                            text = "All",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (selectedCategoryFilter == null) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    shape = RoundedCornerShape(16.dp)
+                )
+
+                // Feed categories
+                FeedCategory.values().forEach { category ->
+                    val isSelected = category == selectedCategoryFilter
                     val elevation by animateDpAsState(
                         targetValue = if (isSelected) 4.dp else 0.dp,
                         animationSpec = spring(
@@ -181,25 +217,37 @@ fun ExploreScreen(
                     FilterChip(
                         selected = isSelected,
                         onClick = {
-                            selectedCategory = if (category == "All") null else category
+                            selectedCategoryFilter = if (isSelected) null else category
                         },
                         label = {
                             Text(
-                                text = category,
+                                text = category.title,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                             )
                         },
+                        leadingIcon = if (isSelected) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        } else null,
                         shape = RoundedCornerShape(16.dp)
                     )
                 }
+
+                // Add padding at end
+                Spacer(modifier = Modifier.width(16.dp))
             }
 
             // Main content
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Show search results if query is not empty
                 if (searchQuery.isNotEmpty()) {
@@ -212,97 +260,83 @@ fun ExploreScreen(
                         )
                     }
 
-                    items(searchResults) { newsItem ->
-                        SmallNewsCard(
-                            newsItem = newsItem,
-                            onBookmarkClick = { /* Handle bookmark */ },
-                            onCardClick = { onNewsItemClick(newsItem.id) }
-                            // Removed the onMoreClick parameter that was causing the error
-                        )
-                    }
-
-                    if (searchResults.isEmpty()) {
+                    if (isSearching) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    } else if (searchResults.isEmpty()) {
                         item {
                             NoResultsMessage(searchQuery)
                         }
+                    } else {
+                        items(searchResults) { feed ->
+                            FeedItem(
+                                feed = feed,
+                                onToggleEnabled = { id, enabled ->
+                                    viewModel.toggleFeedEnabled(id, enabled)
+                                },
+                                onDelete = { id ->
+                                    viewModel.deleteFeed(id)
+                                }
+                            )
+                        }
                     }
                 } else {
-                    // Default explore view
+                    // Default explore view with user feeds
                     item {
                         Text(
-                            text = "Popular Feeds",
+                            text = "Your Feeds (${displayFeeds.size})",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                            modifier = Modifier.padding(vertical = 8.dp)
                         )
                     }
 
-                    // Popular feeds section
-                    items(popularFeeds) { (name, url) ->
-                        PopularFeedItem(
-                            name = name,
-                            url = url,
-                            onClick = { /* Handle feed selection */ }
-                        )
+                    if (displayFeeds.isEmpty()) {
+                        item {
+                            EmptyFeedsMessage(
+                                category = selectedCategoryFilter?.title,
+                                onAddFeedClick = { showAddFeedDialog = true }
+                            )
+                        }
+                    } else {
+                        items(displayFeeds) { feed ->
+                            FeedItem(
+                                feed = feed,
+                                onToggleEnabled = { id, enabled ->
+                                    viewModel.toggleFeedEnabled(id, enabled)
+                                },
+                                onDelete = { id ->
+                                    viewModel.deleteFeed(id)
+                                }
+                            )
+                        }
                     }
 
+                    // Add "Add Feed" Button at bottom
                     item {
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Text(
-                            text = "Discover by Category",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 8.dp, top = 8.dp)
-                        )
-                    }
-
-                    // Category cards
-                    item {
-                        Row(
+                        Button(
+                            onClick = { showAddFeedDialog = true },
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            CategoryCard(
-                                title = "News",
-                                itemCount = 42,
-                                modifier = Modifier.weight(1f)
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 8.dp)
                             )
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            CategoryCard(
-                                title = "Technology",
-                                itemCount = 28,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Text("Add New Feed")
                         }
-                    }
 
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            CategoryCard(
-                                title = "Science",
-                                itemCount = 17,
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            CategoryCard(
-                                title = "Finance",
-                                itemCount = 23,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    // Add more categories as needed
-
-                    item {
                         Spacer(modifier = Modifier.height(32.dp))
                     }
                 }
@@ -314,7 +348,11 @@ fun ExploreScreen(
             AddFeedDialog(
                 onDismiss = { showAddFeedDialog = false },
                 onAddFeed = { url, category ->
-                    onAddFeed(url, category)
+                    scope.launch {
+                        // Try to get feed name from URL
+                        val feedName = viewModel.getFeedInfoFromUrl(url)
+                        viewModel.addFeed(feedName, url, category)
+                    }
                     showAddFeedDialog = false
                 }
             )
@@ -324,21 +362,19 @@ fun ExploreScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PopularFeedItem(
-    name: String,
-    url: String,
-    onClick: () -> Unit
+fun FeedItem(
+    feed: Feed,
+    onToggleEnabled: (String, Boolean) -> Unit,
+    onDelete: (String) -> Unit
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
     Card(
-        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 1.dp,
-            pressedElevation = 4.dp
-        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
@@ -347,73 +383,156 @@ fun PopularFeedItem(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Feed icon
+            feed.iconUrl?.let { url ->
+                AsyncImage(
+                    model = url,
+                    contentDescription = "Feed icon",
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } ?: Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.RssFeed,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
             Column(
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    text = name,
+                    text = feed.name,
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Text(
-                    text = url,
+                    text = feed.url,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Text(
+                    text = feed.category.title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
 
-            Icon(
-                imageVector = Icons.Rounded.Add,
-                contentDescription = "Add feed",
-                tint = MaterialTheme.colorScheme.primary
+            // Enable toggle
+            Switch(
+                checked = feed.isEnabled,
+                onCheckedChange = { onToggleEnabled(feed.id, it) }
             )
+
+            // Delete button (only for non-default feeds)
+            if (!feed.isDefault) {
+                IconButton(onClick = { showDeleteConfirm = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Delete feed",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
         }
+    }
+
+    // Delete confirmation dialog
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Feed") },
+            text = { Text("Are you sure you want to delete the feed \"${feed.name}\"?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(feed.id)
+                        showDeleteConfirm = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
 @Composable
-fun CategoryCard(
-    title: String,
-    itemCount: Int,
-    modifier: Modifier = Modifier
+fun EmptyFeedsMessage(
+    category: String? = null,
+    onAddFeedClick: () -> Unit
 ) {
-    OutlinedCard(
-        modifier = modifier
-            .padding(vertical = 8.dp)
-            .height(100.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .clickable { /* Handle category selection */ },
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+            Icon(
+                imageVector = Icons.Outlined.RssFeed,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+            )
 
-                Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = "$itemCount feeds",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Text(
+                text = if (category != null) "No $category feeds" else "No feeds yet",
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = if (category != null)
+                    "Add a $category feed to read news in this category"
+                else
+                    "Start by adding feeds to keep up with your favorite sources",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(onClick = onAddFeedClick) {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
                 )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Add Feed")
             }
         }
     }
@@ -431,7 +550,7 @@ fun NoResultsMessage(query: String) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "No results found for \"$query\"",
+                text = "No feeds found for \"$query\"",
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center
             )
@@ -439,19 +558,11 @@ fun NoResultsMessage(query: String) {
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Try searching for something else or add a custom feed",
+                text = "Try a different search term or add a new feed",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ExploreScreenPreview() {
-    NovascopeTheme {
-        ExploreScreen()
     }
 }
