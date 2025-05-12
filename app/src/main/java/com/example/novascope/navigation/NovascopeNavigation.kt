@@ -6,10 +6,13 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BookmarkBorder
@@ -30,14 +33,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -97,7 +102,9 @@ fun NovascopeNavigation() {
     Scaffold(
         bottomBar = {
             NovascopeBottomNavBar(navController = navController)
-        }
+        },
+        // Remove insets to match Figma's edge-to-edge design
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         NavHost(
             navController = navController,
@@ -153,24 +160,32 @@ fun NovascopeBottomNavBar(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
+    // Bottom navigation bar - exactly matching Figma specifications
     Box(
         modifier = Modifier
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .fillMaxWidth()
+            .height(83.dp) // Figma's 83px height
+            .background(Color(0xFFFEF7FF)) // Figma's background color
+            .padding(horizontal = 20.dp, vertical = 8.dp), // Figma's padding
+        contentAlignment = Alignment.BottomCenter
     ) {
+        // Main navigation bar
         NavigationBar(
             modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(20.dp)) // Figma's 20px corner radius
                 .fillMaxWidth()
-                .height(65.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            tonalElevation = 4.dp,
-            windowInsets = WindowInsets(0)
+                .height(65.dp), // Figma's nav height
+            containerColor = Color(0xFFFEF7FF), // Match Figma's background color
+            contentColor = Color(0xFF1D1B20), // Match Figma's text color
+            tonalElevation = 0.dp, // No elevation in Figma
+            windowInsets = WindowInsets(0) // No insets in Figma
         ) {
             bottomNavItems.forEach { screen ->
-                val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
+                val selected = currentDestination?.hierarchy?.any {
+                    it.route == screen.route
+                } == true
 
+                // Normal navigation items
                 NavigationBarItem(
                     icon = {
                         AnimatedVisibility(
@@ -178,41 +193,78 @@ fun NovascopeBottomNavBar(navController: NavHostController) {
                             enter = MaterialMotion.fadeInTransition,
                             exit = MaterialMotion.fadeOutTransition
                         ) {
-                            Icon(
-                                imageVector = if (selected) screen.selectedIcon else screen.unselectedIcon,
-                                contentDescription = screen.title,
-                            )
+                            // For selected item, add a background highlight matching Figma
+                            if (selected) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(Color(0xFFE8DEF8)) // Figma's highlight color
+                                            .width(58.33.dp) // Figma width
+                                            .height(28.54.dp), // Figma height
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (selected) screen.selectedIcon else screen.unselectedIcon,
+                                            contentDescription = screen.title,
+                                            tint = Color(0xFF1D1B20), // Figma's icon color
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Icon(
+                                    imageVector = if (selected) screen.selectedIcon else screen.unselectedIcon,
+                                    contentDescription = screen.title,
+                                    tint = if (selected) Color(0xFF1D1B20) else Color(0xFF49454F), // Figma's colors
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
                         }
                     },
                     label = {
                         Text(
                             text = screen.title,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 12.sp,
+                                lineHeight = 14.3.sp, // 119.19% in Figma
+                                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal
+                            ),
+                            color = if (selected) Color(0xFF1D1B20) else Color(0xFF49454F) // Figma's colors
                         )
                     },
                     selected = selected,
                     onClick = {
                         navController.navigate(screen.route) {
-                            // Pop up to the start destination of the graph to
-                            // avoid building up a large stack of destinations
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
                             }
-                            // Avoid multiple copies of the same destination
                             launchSingleTop = true
-                            // Restore state when reselecting a previously selected item
                             restoreState = true
                         }
                     },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        selectedIconColor = Color(0xFF1D1B20), // Figma's selected color
+                        selectedTextColor = Color(0xFF1D1B20), // Figma's selected color
+                        indicatorColor = Color.Transparent, // No indicator in Figma
+                        unselectedIconColor = Color(0xFF49454F), // Figma's unselected color
+                        unselectedTextColor = Color(0xFF49454F) // Figma's unselected color
                     )
                 )
             }
         }
+
+        // Bottom system bar indicator - matches Figma
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 2.85.dp)
+                .width(66.93.dp)
+                .height(2.85.dp)
+                .clip(RoundedCornerShape(21.dp))
+                .background(Color.Black.copy(alpha = 0.7f))
+        )
     }
 }

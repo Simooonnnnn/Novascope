@@ -9,10 +9,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import com.example.novascope.navigation.NovascopeNavigation
 import com.example.novascope.ui.theme.NovascopeTheme
@@ -20,36 +20,41 @@ import com.google.accompanist.systemuicontroller.rememberSystemUiController
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Enable edge-to-edge display
+        // Enable edge-to-edge display to match Figma design
         enableEdgeToEdge()
 
         super.onCreate(savedInstanceState)
 
-        // Set up window to draw behind system bars
+        // Set up window to draw behind system bars (match Figma's full-screen design)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContent {
-            NovascopeTheme {
-                // Remember system UI controller to set status bar color and behavior
-                val systemUiController = rememberSystemUiController()
-                val useDarkIcons = !isSystemInDarkTheme()
+            NovascopeApp()
+        }
+    }
+}
 
-                // Update the status bar colors and transparency
-                DisposableEffect(systemUiController, useDarkIcons) {
-                    systemUiController.setSystemBarsColor(
-                        color = Color.Transparent,
-                        darkIcons = useDarkIcons
-                    )
-                    onDispose {}
-                }
+@Composable
+fun NovascopeApp() {
+    NovascopeTheme {
+        // Set up transparent status bar to match Figma design
+        val systemUiController = rememberSystemUiController()
+        val useDarkIcons = !isSystemInDarkTheme()
 
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    NovascopeNavigation()
-                }
-            }
+        // Make status bar transparent with appropriate icon colors
+        DisposableEffect(systemUiController, useDarkIcons) {
+            systemUiController.setSystemBarsColor(
+                color = Color.Transparent,
+                darkIcons = useDarkIcons
+            )
+            onDispose {}
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            NovascopeNavigation()
         }
     }
 }

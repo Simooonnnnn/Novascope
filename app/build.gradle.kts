@@ -52,26 +52,23 @@ android {
 }
 
 dependencies {
-
     // Splash Screen API
     implementation("androidx.core:core-splashscreen:1.0.0")
     implementation("androidx.compose.material3:material3-window-size-class:1.2.0")
-    implementation("androidx.compose.material:material-icons-extended:1.6.0") // Or the latest version
-
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
 
     // Accompanist System UI Controller
-    implementation("com.google.accompanist:accompanist-systemuicontroller:0.27.0") // Use the latest version
-
-    // Accompanist Window
+    implementation("com.google.accompanist:accompanist-systemuicontroller:0.32.0") // Updated to latest version
 
     // TensorFlow Lite
-    implementation("org.tensorflow:tensorflow-lite:2.11.0") // Use the latest version
-    implementation("androidx.compose.material3:material3-window-size-class:1.1.0") // Use the latest version
+    implementation("org.tensorflow:tensorflow-lite:2.11.0")
+    implementation("androidx.compose.material3:material3-window-size-class:1.2.0")
     // For BertNLClassifier (part of TensorFlow Lite Task Library)
-    implementation("org.tensorflow:tensorflow-lite-task-text:0.4.0") // Use the latest version
+    implementation("org.tensorflow:tensorflow-lite-task-text:0.4.0")
 
-    // RSS Parsing Library (Example using Rome)
-    implementation("com.rometools:rome:1.18.0") // Use the latest version
+    // RSS Parsing Library
+    implementation("com.rometools:rome:1.18.0")
+
     // Core Android libraries
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
@@ -82,7 +79,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3:material3:1.2.0")
 
     // Animation
     implementation("androidx.compose.animation:animation")
@@ -100,7 +97,6 @@ dependencies {
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.4.0")
-
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

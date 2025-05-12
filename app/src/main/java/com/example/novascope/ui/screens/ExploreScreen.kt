@@ -217,8 +217,8 @@ fun ExploreScreen(
                         SmallNewsCard(
                             newsItem = newsItem,
                             onBookmarkClick = { /* Handle bookmark */ },
-                            onCardClick = { onNewsItemClick(newsItem.id) },
-                            onMoreClick = { /* Handle more options */ }
+                            onCardClick = { onNewsItemClick(newsItem.id) }
+                            // Removed the onMoreClick parameter that was causing the error
                         )
                     }
 

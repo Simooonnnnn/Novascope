@@ -59,36 +59,3 @@ val DarkOnSurface = Color(0xFFE6E0E9)
 val DarkSurfaceVariant = Color(0xFF49454F)
 val DarkOnSurfaceVariant = Color(0xFFCAC4D0)
 val DarkOutline = Color(0xFF938F99)
-
-// Text Colors
-val White = Color(0xFFFFFFFF)
-val DarkGray = Color(0xFF1D1B20)
-val MediumGray = Color(0xFF49454F)
-val LightGray = Color(0xFFF4EFF4)
-
-// Add these color definitions to your existing Color.kt file
-
-// Assuming you want to map these names to your existing color palette
-val Purple40 = LightPrimaryColor // Or choose another light purple color
-val PurpleLight = LightPrimaryContainer // Or choose another light purple color
-val Pink40 = LightTertiaryColor // Or choose another light pink/rose color
-val PinkLight = LightTertiaryContainer // Or choose another light pink/rose color
-val Red40 = LightErrorColor // Or choose another light red color
-val RedLight = LightErrorContainer // Or choose another light red color
-val DarkRed = LightOnErrorContainer // Or choose another dark red color (like the color used for text on error containers)
-
-val Purple80 = DarkPrimaryColor // Or choose another dark purple color
-val Pink80 = DarkTertiaryColor // Or choose another dark pink/rose color
-val Red80 = DarkErrorColor // Or choose another dark red color
-
-// The following text colors are already defined, but adding aliases might make your Type.kt cleaner
-// val White = Color(0xFFFFFFFF) // Already defined
-// val DarkGray = Color(0xFF1D1B20) // Already defined
-// val MediumGray = Color(0xFF49454F) // Already defined
-// val LightGray = Color(0xFFF4EFF4) // Already defined
-
-// These surface colors are also already defined, but adding aliases might make your Type.kt cleaner
-// val LightBackground = Color(0xFFFEF7FF) // Already defined
-// val DarkBackground = Color(0xFF1D1B20) // Already defined
-// val LightSurfaceVariant = Color(0xFFE7E0EC) // Already defined
-// val DarkSurfaceVariant = Color(0xFF49454F) // Already defined
