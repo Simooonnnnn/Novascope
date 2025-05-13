@@ -10,7 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,8 +23,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -58,6 +58,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,16 +69,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.novascope.model.Feed
 import com.example.novascope.model.FeedCategory
-import com.example.novascope.model.SampleData
 import com.example.novascope.ui.components.AddFeedDialog
-import com.example.novascope.ui.components.SmallNewsCard
 import com.example.novascope.viewmodel.NovascopeViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -99,15 +100,20 @@ fun ExploreScreen(
     var searchResults by remember { mutableStateOf(emptyList<Feed>()) }
 
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-    // Filter feeds by category
-    val displayFeeds = if (selectedCategoryFilter != null) {
-        feeds.filter { it.category == selectedCategoryFilter }
-    } else {
-        feeds
+    // Filter feeds by category using derivedStateOf for better performance
+    val displayFeeds by remember(feeds, selectedCategoryFilter) {
+        derivedStateOf {
+            if (selectedCategoryFilter != null) {
+                feeds.filter { it.category == selectedCategoryFilter }
+            } else {
+                feeds
+            }
+        }
     }
 
-    // Handle search
+    // Handle search with debounce
     LaunchedEffect(searchQuery, feeds) {
         if (searchQuery.isNotEmpty()) {
             isSearching = true
@@ -168,7 +174,8 @@ fun ExploreScreen(
                     if (isSearching) {
                         CircularProgressIndicator(
                             modifier = Modifier.padding(end = 8.dp),
-                            strokeWidth = 2.dp
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 },
@@ -177,42 +184,32 @@ fun ExploreScreen(
             )
 
             // Category filters
-            Row(
+            LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
                     .padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
-                // Add padding at start
-                Spacer(modifier = Modifier.width(16.dp))
-
                 // "All" category
-                FilterChip(
-                    selected = selectedCategoryFilter == null,
-                    onClick = { selectedCategoryFilter = null },
-                    label = {
-                        Text(
-                            text = "All",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (selectedCategoryFilter == null) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    shape = RoundedCornerShape(16.dp)
-                )
+                item {
+                    FilterChip(
+                        selected = selectedCategoryFilter == null,
+                        onClick = { selectedCategoryFilter = null },
+                        label = {
+                            Text(
+                                text = "All",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (selectedCategoryFilter == null) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                }
 
                 // Feed categories
-                FeedCategory.values().forEach { category ->
+                items(FeedCategory.values()) { category ->
                     val isSelected = category == selectedCategoryFilter
-                    val elevation by animateDpAsState(
-                        targetValue = if (isSelected) 4.dp else 0.dp,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMedium
-                        ),
-                        label = "category elevation"
-                    )
 
                     FilterChip(
                         selected = isSelected,
@@ -238,9 +235,6 @@ fun ExploreScreen(
                         shape = RoundedCornerShape(16.dp)
                     )
                 }
-
-                // Add padding at end
-                Spacer(modifier = Modifier.width(16.dp))
             }
 
             // Main content
@@ -276,7 +270,11 @@ fun ExploreScreen(
                             NoResultsMessage(searchQuery)
                         }
                     } else {
-                        items(searchResults) { feed ->
+                        // Use itemsIndexed with keys for stable item identity
+                        itemsIndexed(
+                            items = searchResults,
+                            key = { _, feed -> feed.id }
+                        ) { _, feed ->
                             FeedItem(
                                 feed = feed,
                                 onToggleEnabled = { id, enabled ->
@@ -307,7 +305,11 @@ fun ExploreScreen(
                             )
                         }
                     } else {
-                        items(displayFeeds) { feed ->
+                        // Use itemsIndexed with keys for stable item identity
+                        itemsIndexed(
+                            items = displayFeeds,
+                            key = { _, feed -> feed.id }
+                        ) { _, feed ->
                             FeedItem(
                                 feed = feed,
                                 onToggleEnabled = { id, enabled ->
@@ -368,6 +370,7 @@ fun FeedItem(
     onDelete: (String) -> Unit
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -383,10 +386,14 @@ fun FeedItem(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Feed icon
+            // Feed icon with optimized image loading
             feed.iconUrl?.let { url ->
                 AsyncImage(
-                    model = url,
+                    model = ImageRequest.Builder(context)
+                        .data(url)
+                        .crossfade(true)
+                        .size(80, 80)
+                        .build(),
                     contentDescription = "Feed icon",
                     modifier = Modifier
                         .size(40.dp)
@@ -435,7 +442,7 @@ fun FeedItem(
                 )
             }
 
-            // Enable toggle
+            // Enable toggle with optimized handling
             Switch(
                 checked = feed.isEnabled,
                 onCheckedChange = { onToggleEnabled(feed.id, it) }
@@ -454,7 +461,7 @@ fun FeedItem(
         }
     }
 
-    // Delete confirmation dialog
+    // Delete confirmation dialog - only render when needed
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },

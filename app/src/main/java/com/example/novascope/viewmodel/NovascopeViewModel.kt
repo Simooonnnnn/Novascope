@@ -4,7 +4,6 @@ package com.example.novascope.viewmodel
 import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.novascope.ai.ArticleSummarizer
 import com.example.novascope.ai.SummaryState
@@ -14,13 +13,19 @@ import com.example.novascope.model.Feed
 import com.example.novascope.model.FeedCategory
 import com.example.novascope.model.NewsItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Collections
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 class NovascopeViewModel(private val context: Context) : ViewModel() {
 
@@ -29,7 +34,12 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     private val feedRepository = FeedRepository(context)
     private val articleSummarizer = ArticleSummarizer(context)
 
-    // UI state
+    // Concurrent tracking to prevent duplicate work
+    private val feedsBeingFetched = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+    private val isLoadingFeeds = AtomicBoolean(false)
+    private var currentLoadJob: Job? = null
+
+    // UI state with optimized updates
     data class UiState(
         val isLoading: Boolean = false,
         val isRefreshing: Boolean = false,
@@ -51,18 +61,23 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     private val _settings = MutableStateFlow(AppSettings())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
+    // Articles cache to avoid recreating objects
+    private val articlesCache = ConcurrentHashMap<String, NewsItem>()
+
     init {
         // Observe feeds from repository
         viewModelScope.launch {
             feedRepository.feeds.collect { latestFeeds ->
                 _feeds.value = latestFeeds
-                // Reload news when feeds change
-                loadFeeds()
+                // Only reload feeds when necessary
+                if (uiState.value.newsItems.isEmpty() && !isLoadingFeeds.get()) {
+                    loadFeeds()
+                }
             }
         }
 
-        // Initialize the AI model
-        viewModelScope.launch {
+        // Initialize the AI model in a non-blocking way
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 articleSummarizer.initializeModel()
             } catch (e: Exception) {
@@ -71,31 +86,72 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // Load all feeds
+    // Load all feeds with optimized parallel loading
     fun loadFeeds(forceRefresh: Boolean = false) {
-        viewModelScope.launch {
+        // Cancel any existing load job
+        currentLoadJob?.cancel()
+
+        // Set loading state atomically
+        if (!isLoadingFeeds.compareAndSet(false, true)) {
+            if (!forceRefresh) return  // Don't reload if already loading
+        }
+
+        currentLoadJob = viewModelScope.launch {
             if (forceRefresh) {
-                _uiState.update { it.copy(isRefreshing = true) }
+                _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
+                // Clear cache when forcing refresh
+                rssService.clearCache()
             } else {
-                _uiState.update { it.copy(isLoading = true) }
+                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             }
 
             try {
                 val allItems = mutableListOf<NewsItem>()
                 val enabledFeeds = feedRepository.getEnabledFeeds()
 
-                for (feed in enabledFeeds) {
-                    try {
-                        val items = rssService.fetchFeed(feed.url)
-                        // Add the feed ID to each item for tracking
-                        val itemsWithFeedId = items.map { it.copy(feedId = feed.id) }
-                        allItems.addAll(itemsWithFeedId)
-                    } catch (e: Exception) {
-                        Log.e("ViewModel", "Error loading feed ${feed.name}: ${e.message}")
+                // Process feeds in parallel
+                val deferredItems = enabledFeeds.map { feed ->
+                    async(Dispatchers.IO) {
+                        try {
+                            if (!feedsBeingFetched.add(feed.id)) {
+                                return@async emptyList<NewsItem>() // Skip if already fetching
+                            }
+
+                            val items = rssService.fetchFeed(feed.url, forceRefresh)
+
+                            // Add the feed ID to each item for tracking
+                            items.map { it.copy(feedId = feed.id) }
+                        } catch (e: Exception) {
+                            Log.e("ViewModel", "Error loading feed ${feed.name}: ${e.message}")
+                            emptyList<NewsItem>()
+                        } finally {
+                            feedsBeingFetched.remove(feed.id)
+                        }
                     }
                 }
 
-                // Sort by publish date, newest first
+                // Await all results
+                val results = deferredItems.awaitAll()
+
+                // Combine and dedup results
+                val itemsMap = ConcurrentHashMap<String, NewsItem>()
+                results.forEach { items ->
+                    items.forEach { item ->
+                        // Preserve bookmark status from cache
+                        val existingItem = articlesCache[item.id]
+                        if (existingItem != null && existingItem.isBookmarked) {
+                            itemsMap[item.id] = item.copy(isBookmarked = true)
+                        } else {
+                            itemsMap[item.id] = item
+                        }
+                    }
+                }
+
+                // Update cache
+                articlesCache.putAll(itemsMap)
+
+                // Convert to list and sort
+                allItems.addAll(itemsMap.values)
                 val sortedItems = allItems.sortedByDescending { it.publishTimeMillis }
 
                 // Mark first item as big article
@@ -106,17 +162,20 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                     sortedItems
                 }
 
+                // Update bookmarked items list
+                val bookmarkedItems = displayItems.filter { it.isBookmarked }
+
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         isRefreshing = false,
                         newsItems = displayItems,
-                        errorMessage = null,
-                        // Preserve bookmarked state when refreshing
-                        bookmarkedItems = updateBookmarks(displayItems, it.bookmarkedItems)
+                        bookmarkedItems = bookmarkedItems,
+                        errorMessage = null
                     )
                 }
             } catch (e: Exception) {
+                Log.e("ViewModel", "Error loading feeds: ${e.message}")
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -124,28 +183,29 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                         errorMessage = "Error loading feeds: ${e.message}"
                     )
                 }
+            } finally {
+                isLoadingFeeds.set(false)
             }
         }
     }
 
-    // Preserve bookmarks when refreshing
-    private fun updateBookmarks(newItems: List<NewsItem>, oldBookmarked: List<NewsItem>): List<NewsItem> {
-        val bookmarkedIds = oldBookmarked.map { it.id }.toSet()
-        return newItems.filter { it.isBookmarked || bookmarkedIds.contains(it.id) }
-    }
-
-    // Toggle bookmark for an article
+    // Toggle bookmark with optimized state updates
     fun toggleBookmark(newsItemId: String) {
+        val cachedItem = articlesCache[newsItemId] ?: return
+
+        // Update cache directly for immediate response
+        val updatedItem = cachedItem.copy(isBookmarked = !cachedItem.isBookmarked)
+        articlesCache[newsItemId] = updatedItem
+
         _uiState.update { state ->
-            val updatedItems = state.newsItems.map { item ->
-                if (item.id == newsItemId) {
-                    item.copy(isBookmarked = !item.isBookmarked)
-                } else item
+            // Update main items list efficiently
+            val updatedItems = state.newsItems.map {
+                if (it.id == newsItemId) updatedItem else it
             }
 
             // Update bookmarked items list
-            val updatedBookmarks = if (updatedItems.find { it.id == newsItemId }?.isBookmarked == true) {
-                state.bookmarkedItems + updatedItems.find { it.id == newsItemId }!!
+            val updatedBookmarks = if (updatedItem.isBookmarked) {
+                state.bookmarkedItems + updatedItem
             } else {
                 state.bookmarkedItems.filter { it.id != newsItemId }
             }
@@ -181,6 +241,17 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     fun deleteFeed(feedId: String) {
         viewModelScope.launch {
             feedRepository.deleteFeed(feedId)
+
+            // Remove associated articles from UI to prevent showing deleted feed's content
+            _uiState.update { state ->
+                val updatedItems = state.newsItems.filter { it.feedId != feedId }
+                val updatedBookmarks = state.bookmarkedItems.filter { it.feedId != feedId }
+
+                state.copy(
+                    newsItems = updatedItems,
+                    bookmarkedItems = updatedBookmarks
+                )
+            }
         }
     }
 
@@ -188,10 +259,23 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     fun toggleFeedEnabled(feedId: String, isEnabled: Boolean) {
         viewModelScope.launch {
             feedRepository.toggleFeedEnabled(feedId, isEnabled)
+
+            // If disabling a feed, remove its items from UI
+            if (!isEnabled) {
+                _uiState.update { state ->
+                    val updatedItems = state.newsItems.filter { it.feedId != feedId }
+                    val updatedBookmarks = state.bookmarkedItems.filter { it.feedId != feedId }
+
+                    state.copy(
+                        newsItems = updatedItems,
+                        bookmarkedItems = updatedBookmarks
+                    )
+                }
+            }
         }
     }
 
-    // Get a feed by its URL
+    // Get a feed by its URL with timeout
     suspend fun getFeedInfoFromUrl(url: String): String {
         return withContext(Dispatchers.IO) {
             try {
@@ -207,20 +291,22 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // Select article for detail view
+    // Select article for detail view with optimized summary loading
     fun selectArticle(articleId: String) {
-        val article = _uiState.value.newsItems.find { it.id == articleId }
-        _uiState.update { it.copy(selectedArticle = article) }
+        val article = articlesCache[articleId] ?:
+        _uiState.value.newsItems.find { it.id == articleId }
 
-        // Generate AI summary if feature is enabled
-        article?.let {
+        if (article != null) {
+            _uiState.update { it.copy(selectedArticle = article) }
+
+            // Generate AI summary if feature is enabled
             if (_settings.value.enableAiSummary) {
-                generateSummary(it)
+                generateSummary(article)
             }
         }
     }
 
-    // Generate summary with local AI
+    // Generate summary with local AI and caching
     private fun generateSummary(newsItem: NewsItem) {
         viewModelScope.launch {
             _uiState.update { it.copy(summaryState = SummaryState.Loading) }
@@ -259,7 +345,9 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     // Clean up resources
     override fun onCleared() {
         super.onCleared()
+        currentLoadJob?.cancel()
         articleSummarizer.close()
+        articlesCache.clear()
     }
 }
 

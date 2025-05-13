@@ -13,11 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.*
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack  // Add this import
-import androidx.compose.material3.HorizontalDivider  //
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,38 +23,29 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.novascope.ui.theme.NovascopeTheme
 
-// Move these enums OUTSIDE the SettingsScreen composable function
-// Theme mode enum
-enum class ThemeMode(val title: String, val description: String) {
-    LIGHT("Light", "Always use light theme"),
-    DARK("Dark", "Always use dark theme"),
-    SYSTEM("System", "Follow system settings")
-}
-
-// Text size enum
-enum class TextSize(val title: String, val scaleFactor: Float) {
-    SMALL("Small", 0.8f),
-    MEDIUM("Medium", 1.0f),
-    LARGE("Large", 1.2f)
-}
-
+/**
+ * Optimized settings screen with better performance
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBackClick: () -> Unit = {}
 ) {
+    // State management - use remember for stable references
     var useDynamicColor by remember { mutableStateOf(true) }
-    var themeMode by remember { mutableStateOf<ThemeMode>(ThemeMode.SYSTEM) }
+    var themeMode by remember { mutableStateOf(ThemeMode.SYSTEM) }
     var enableNotifications by remember { mutableStateOf(true) }
     var enableAiSummary by remember { mutableStateOf(true) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
-    var textSize by remember { mutableStateOf<TextSize>(TextSize.MEDIUM) }
+    var textSize by remember { mutableStateOf(TextSize.MEDIUM) }
+
+    // Pre-compute colors and sizes for better performance
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val primaryContainerWithAlpha = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
 
     Scaffold(
         topBar = {
@@ -65,7 +54,7 @@ fun SettingsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,  // Updated reference
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "Back"
                         )
                     }
@@ -77,6 +66,7 @@ fun SettingsScreen(
             )
         }
     ) { innerPadding ->
+        // Use LazyColumn for better performance with many settings
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -95,6 +85,7 @@ fun SettingsScreen(
                         ThemeMode.DARK -> Icons.Outlined.DarkMode
                         ThemeMode.SYSTEM -> Icons.Outlined.BrightnessAuto
                     },
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     onClick = { showThemeDialog = true }
                 )
 
@@ -102,6 +93,7 @@ fun SettingsScreen(
                     title = "Dynamic Color",
                     subtitle = "Use colors from your wallpaper (Android 12+)",
                     icon = Icons.Outlined.Palette,
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     checked = useDynamicColor,
                     onToggle = { useDynamicColor = it }
                 )
@@ -110,6 +102,7 @@ fun SettingsScreen(
                     title = "Text Size",
                     subtitle = textSize.title,
                     icon = Icons.Outlined.FormatSize,
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     onClick = {
                         // Cycle through text sizes
                         textSize = when (textSize) {
@@ -120,9 +113,9 @@ fun SettingsScreen(
                     }
                 )
 
-                HorizontalDivider(  // Changed from Divider
+                HorizontalDivider(
                     modifier = Modifier.padding(vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    color = dividerColor
                 )
             }
 
@@ -134,6 +127,7 @@ fun SettingsScreen(
                     title = "AI Summaries",
                     subtitle = "Generate summaries using on-device AI",
                     icon = Icons.Outlined.Psychology,
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     checked = enableAiSummary,
                     onToggle = { enableAiSummary = it }
                 )
@@ -142,6 +136,7 @@ fun SettingsScreen(
                     title = "Notifications",
                     subtitle = "Receive alerts for new articles",
                     icon = Icons.Outlined.Notifications,
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     checked = enableNotifications,
                     onToggle = { enableNotifications = it }
                 )
@@ -150,12 +145,13 @@ fun SettingsScreen(
                     title = "Default Language",
                     subtitle = "English",
                     icon = Icons.Outlined.Language,
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     onClick = { /* Open language selector */ }
                 )
 
-                Divider(
+                HorizontalDivider(
                     modifier = Modifier.padding(vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    color = dividerColor
                 )
             }
 
@@ -167,6 +163,7 @@ fun SettingsScreen(
                     title = "Clear Cache",
                     subtitle = "Free up space used by images and data",
                     icon = Icons.Outlined.Delete,
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     onClick = { showClearCacheDialog = true }
                 )
 
@@ -174,6 +171,7 @@ fun SettingsScreen(
                     title = "Refresh All Feeds",
                     subtitle = "Update all feeds manually",
                     icon = Icons.Outlined.Refresh,
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     onClick = { /* Refresh all feeds */ }
                 )
 
@@ -181,12 +179,13 @@ fun SettingsScreen(
                     title = "Storage Usage",
                     subtitle = "42 MB used",
                     icon = Icons.Outlined.Storage,
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     onClick = { /* Show storage details */ }
                 )
 
-                Divider(
+                HorizontalDivider(
                     modifier = Modifier.padding(vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    color = dividerColor
                 )
             }
 
@@ -198,6 +197,7 @@ fun SettingsScreen(
                     title = "Novascope",
                     subtitle = "Version 1.0.0",
                     icon = Icons.Outlined.Info,
+                    iconBackgroundColor = primaryContainerWithAlpha,
                     onClick = { /* Show about dialog */ }
                 )
 
@@ -205,55 +205,19 @@ fun SettingsScreen(
             }
         }
 
-        // Theme Selection Dialog
+        // Theme Selection Dialog - only render when needed
         if (showThemeDialog) {
-            AlertDialog(
-                onDismissRequest = { showThemeDialog = false },
-                title = { Text("Choose Theme") },
-                text = {
-                    Column {
-                        ThemeMode.values().forEach { mode ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = mode == themeMode,
-                                    onClick = {
-                                        themeMode = mode
-                                        showThemeDialog = false
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        text = mode.title,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                    Text(
-                                        text = mode.description,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
+            OptimizedThemeDialog(
+                currentTheme = themeMode,
+                onThemeSelected = {
+                    themeMode = it
+                    showThemeDialog = false
                 },
-                confirmButton = {
-                    TextButton(onClick = { showThemeDialog = false }) {
-                        Text("Cancel")
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.surface,
-                titleContentColor = MaterialTheme.colorScheme.onSurface,
-                textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                onDismiss = { showThemeDialog = false }
             )
         }
 
-        // Clear Cache Confirmation Dialog
+        // Clear Cache Confirmation Dialog - only render when needed
         if (showClearCacheDialog) {
             AlertDialog(
                 onDismissRequest = { showClearCacheDialog = false },
@@ -285,6 +249,55 @@ fun SettingsScreen(
 }
 
 @Composable
+fun OptimizedThemeDialog(
+    currentTheme: ThemeMode,
+    onThemeSelected: (ThemeMode) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose Theme") },
+        text = {
+            Column {
+                ThemeMode.values().forEach { mode ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = mode == currentTheme,
+                            onClick = { onThemeSelected(mode) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = mode.title,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = mode.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
 fun SettingsSectionHeader(title: String) {
     Text(
         text = title,
@@ -303,6 +316,7 @@ fun SettingsItem(
     title: String,
     subtitle: String,
     icon: ImageVector,
+    iconBackgroundColor: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit
 ) {
     Card(
@@ -332,7 +346,7 @@ fun SettingsItem(
                 modifier = Modifier
                     .size(24.dp)
                     .background(
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                        color = iconBackgroundColor,
                         shape = RoundedCornerShape(8.dp)
                     )
                     .padding(4.dp)
@@ -349,11 +363,8 @@ fun SettingsItem(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                AnimatedVisibility(
-                    visible = subtitle.isNotEmpty(),
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
+                // Only show subtitle if not empty
+                if (subtitle.isNotEmpty()) {
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodyMedium,
@@ -376,6 +387,7 @@ fun SettingsToggleItem(
     title: String,
     subtitle: String,
     icon: ImageVector,
+    iconBackgroundColor: androidx.compose.ui.graphics.Color,
     checked: Boolean,
     onToggle: (Boolean) -> Unit
 ) {
@@ -393,7 +405,7 @@ fun SettingsToggleItem(
             modifier = Modifier
                 .size(24.dp)
                 .background(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                    color = iconBackgroundColor,
                     shape = RoundedCornerShape(8.dp)
                 )
                 .padding(4.dp)
@@ -412,19 +424,8 @@ fun SettingsToggleItem(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            AnimatedVisibility(
-                visible = subtitle.isNotEmpty(),
-                enter = fadeIn(
-                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
-                ) + expandVertically(
-                    animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
-                ),
-                exit = fadeOut(
-                    animationSpec = tween(durationMillis = 150, easing = LinearEasing)
-                ) + shrinkVertically(
-                    animationSpec = tween(durationMillis = 150, easing = LinearEasing)
-                )
-            ) {
+            // Only show subtitle if not empty
+            if (subtitle.isNotEmpty()) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
@@ -440,10 +441,16 @@ fun SettingsToggleItem(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun SettingsScreenPreview() {
-    NovascopeTheme {
-        SettingsScreen()
-    }
+// Theme mode enum
+enum class ThemeMode(val title: String, val description: String) {
+    LIGHT("Light", "Always use light theme"),
+    DARK("Dark", "Always use dark theme"),
+    SYSTEM("System", "Follow system settings")
+}
+
+// Text size enum
+enum class TextSize(val title: String, val scaleFactor: Float) {
+    SMALL("Small", 0.8f),
+    MEDIUM("Medium", 1.0f),
+    LARGE("Large", 1.2f)
 }

@@ -5,7 +5,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -36,7 +35,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.Surface
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -55,7 +53,6 @@ import com.example.novascope.ui.screens.SettingsScreen
 import com.example.novascope.ui.theme.NovascopeTheme
 import com.example.novascope.viewmodel.NovascopeViewModel
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
-import androidx.compose.material3.NavigationBarItemDefaults
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -236,14 +233,14 @@ fun NovascopeBottomNav(navController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route
 
     NavigationBar(
-        tonalElevation = 0.dp,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 8.dp
     ) {
         bottomNavItems.forEach { screen ->
             val selected = currentRoute == screen.route
 
             NavigationBarItem(
-                modifier = Modifier.animateContentSize(), // Add this modifier
                 icon = {
                     Icon(
                         imageVector = if (selected) screen.selectedIcon else screen.unselectedIcon,
@@ -254,10 +251,15 @@ fun NovascopeBottomNav(navController: NavHostController) {
                 selected = selected,
                 onClick = {
                     navController.navigate(screen.route) {
+                        // Pop up to the start destination of the graph to
+                        // avoid building up a large stack of destinations
                         popUpTo(navController.graph.findStartDestination().id) {
                             saveState = true
                         }
+                        // Avoid multiple copies of the same destination when
+                        // reselecting the same item
                         launchSingleTop = true
+                        // Restore state when reselecting a previously selected item
                         restoreState = true
                     }
                 }

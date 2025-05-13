@@ -12,20 +12,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.novascope.model.FeedCategory
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import kotlinx.coroutines.launch
 
+/**
+ * Optimized dialog for adding RSS feeds
+ */
 @Composable
 fun AddFeedDialog(
     onDismiss: () -> Unit,
     onAddFeed: (String, FeedCategory) -> Unit
 ) {
+    // State management
     var url by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<FeedCategory>(FeedCategory.News) }
     var isUrlValid by remember { mutableStateOf(true) }
@@ -35,8 +42,13 @@ fun AddFeedDialog(
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
 
+    // Memoize dialog content colors for better performance
+    val dialogContentColor = MaterialTheme.colorScheme.onSurface
+    val errorColor = MaterialTheme.colorScheme.error
+
+    // Auto-focus on URL field
     LaunchedEffect(Unit) {
-        delay(100)
+        delay(100)  // Small delay to ensure proper focus
         focusRequester.requestFocus()
     }
 
@@ -53,7 +65,7 @@ fun AddFeedDialog(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Header
+                // Header with pre-calculated layout
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -61,33 +73,39 @@ fun AddFeedDialog(
                 ) {
                     Text(
                         text = "Add RSS Feed",
-                        style = MaterialTheme.typography.titleLarge
+                        style = MaterialTheme.typography.titleLarge,
+                        color = dialogContentColor
                     )
 
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "Close"
+                            contentDescription = "Close",
+                            tint = dialogContentColor
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // URL field
+                // URL field with optimized error handling
                 OutlinedTextField(
                     value = url,
                     onValueChange = {
                         url = it
-                        isUrlValid = true // Reset validation when typing
-                        errorMessage = ""
+                        // Only validate when user types
+                        if (!isUrlValid) {
+                            isUrlValid = true
+                            errorMessage = ""
+                        }
                     },
                     label = { Text("Feed URL") },
                     placeholder = { Text("https://example.com/rss") },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Filled.RssFeed,
-                            contentDescription = null
+                            contentDescription = null,
+                            tint = if (isUrlValid) MaterialTheme.colorScheme.primary else errorColor
                         )
                     },
                     isError = !isUrlValid,
@@ -97,7 +115,8 @@ fun AddFeedDialog(
                         .focusRequester(focusRequester)
                 )
 
-                if (!isUrlValid) {
+                // Error message - only show when invalid
+                AnimatedVisibility(visible = !isUrlValid) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -107,13 +126,13 @@ fun AddFeedDialog(
                         Icon(
                             imageVector = Icons.Default.Warning,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
+                            tint = errorColor,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = errorMessage.ifEmpty { "Please enter a valid RSS feed URL" },
-                            color = MaterialTheme.colorScheme.error,
+                            color = errorColor,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -132,15 +151,12 @@ fun AddFeedDialog(
                         .padding(bottom = 8.dp)
                 )
 
-                // Category chips in a simple Row with horizontal scroll
-                Row(
+                // Use LazyRow for better performance with many categories
+                LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Display all categories
-                    FeedCategory.values().forEach { category ->
+                    items(FeedCategory.values()) { category ->
                         FilterChip(
                             selected = category == selectedCategory,
                             onClick = { selectedCategory = category },
