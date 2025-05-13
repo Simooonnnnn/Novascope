@@ -3,7 +3,6 @@ package com.example.novascope.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Notifications
@@ -12,16 +11,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.LifecycleOwner
 import com.example.novascope.ui.components.LargeNewsCard
 import com.example.novascope.ui.components.SmallNewsCard
 import com.example.novascope.viewmodel.NovascopeViewModel
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,48 +25,40 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     viewModel: NovascopeViewModel,
     onNewsItemClick: (String) -> Unit = {},
-    onAddFeedClick: () -> Unit = {},
-    lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current
+    onAddFeedClick: () -> Unit = {}
 ) {
+    // Use collectAsState(initial) to avoid null states during initialization
     val uiState by viewModel.uiState.collectAsState()
-    val newsItems = uiState.newsItems
-    val isLoading = uiState.isLoading
-    val isRefreshing = uiState.isRefreshing
-    val errorMessage = uiState.errorMessage
-
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
 
-    // Observe lifecycle to refresh content when screen is resumed
-    DisposableEffect(lifecycleOwner) {
+    // Only observe lifecycle once using DisposableEffect
+    DisposableEffect(Unit) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                // Only refresh if we have no items or if it's been a while
-                if (newsItems.isEmpty()) {
-                    scope.launch {
-                        viewModel.loadFeeds(false)
-                    }
+            if (event == Lifecycle.Event.ON_RESUME && uiState.newsItems.isEmpty()) {
+                scope.launch {
+                    viewModel.loadFeeds(false)
                 }
             }
         }
 
-        lifecycleOwner.lifecycle.addObserver(observer)
+        viewModel.attachLifecycleObserver(observer)
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.detachLifecycleObserver(observer)
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Novascope", style = MaterialTheme.typography.headlineLarge) },
+                title = {
+                    Text(
+                        "Novascope",
+                        style = MaterialTheme.typography.headlineLarge
+                    )
+                },
                 actions = {
-                    IconButton(onClick = {
-                        scope.launch {
-                            viewModel.loadFeeds(true)
-                        }
-                    }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh Feeds")
+                    IconButton(onClick = { scope.launch { viewModel.loadFeeds(true) } }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                     IconButton(onClick = onAddFeedClick) {
                         Icon(Icons.Default.Add, contentDescription = "Add Feed")
@@ -91,108 +79,113 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding())
         ) {
-            if (isLoading && !isRefreshing) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth()
-                )
+            if (uiState.isLoading && !uiState.isRefreshing) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            if (newsItems.isEmpty() && !isLoading && !isRefreshing) {
+            if (uiState.newsItems.isEmpty() && !uiState.isLoading && !uiState.isRefreshing) {
                 EmptyFeedView(onAddFeedClick)
             } else {
-                // Use key to force recomposition when items change substantially
-                key(newsItems.size) {
-                    LazyColumn(
-                        contentPadding = PaddingValues(
-                            bottom = padding.calculateBottomPadding(),
-                            start = 16.dp,
-                            end = 16.dp
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        item {
-                            Text(
-                                text = "For You",
-                                style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                modifier = Modifier.padding(vertical = 16.dp)
-                            )
-                        }
+                NewsContent(
+                    newsItems = uiState.newsItems,
+                    isRefreshing = uiState.isRefreshing,
+                    errorMessage = uiState.errorMessage,
+                    onNewsItemClick = onNewsItemClick,
+                    onBookmarkClick = { viewModel.toggleBookmark(it.id) },
+                    bottomPadding = padding.calculateBottomPadding()
+                )
+            }
+        }
+    }
+}
 
-                        // Refresh indicator
-                        if (isRefreshing) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(32.dp),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
+@Composable
+private fun NewsContent(
+    newsItems: List<com.example.novascope.model.NewsItem>,
+    isRefreshing: Boolean,
+    errorMessage: String?,
+    onNewsItemClick: (String) -> Unit,
+    onBookmarkClick: (com.example.novascope.model.NewsItem) -> Unit,
+    bottomPadding: androidx.compose.ui.unit.Dp
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(
+            bottom = bottomPadding,
+            start = 16.dp,
+            end = 16.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item {
+            Text(
+                text = "For You",
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.Medium
+                ),
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
+        }
 
-                        // Error message
-                        if (errorMessage != null) {
-                            item {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.errorContainer
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text(
-                                        text = errorMessage,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        modifier = Modifier.padding(16.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Articles with big card every few items
-                        // Use itemsIndexed with key for stable identity
-                        itemsIndexed(
-                            items = newsItems,
-                            key = { _, item -> item.id } // Use stable ID as key
-                        ) { index, item ->
-                            // Display a big card for first item and every 5th item thereafter
-                            val useBigCard = (index == 0 || (index + 1) % 5 == 0)
-
-                            if (useBigCard) {
-                                LargeNewsCard(
-                                    newsItem = item,
-                                    onBookmarkClick = {
-                                        viewModel.toggleBookmark(it.id)
-                                    },
-                                    onCardClick = { onNewsItemClick(it.id) }
-                                )
-                            } else {
-                                SmallNewsCard(
-                                    newsItem = item,
-                                    onBookmarkClick = {
-                                        viewModel.toggleBookmark(it.id)
-                                    },
-                                    onCardClick = { onNewsItemClick(it.id) }
-                                )
-                            }
-                        }
-
-                        // Extra space at bottom
-                        item {
-                            Spacer(modifier = Modifier.height(32.dp))
-                        }
-                    }
+        // Only show refresh indicator when actually refreshing
+        if (isRefreshing) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
             }
+        }
+
+        // Only show error message when present
+        errorMessage?.let {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+        }
+
+        // Optimized item rendering with stable keys
+        itemsIndexed(
+            items = newsItems,
+            key = { _, item -> item.id }
+        ) { index, item ->
+            val useBigCard = index == 0 || (index + 1) % 5 == 0
+
+            if (useBigCard) {
+                LargeNewsCard(
+                    newsItem = item,
+                    onBookmarkClick = onBookmarkClick,
+                    onCardClick = { onNewsItemClick(it.id) }
+                )
+            } else {
+                SmallNewsCard(
+                    newsItem = item,
+                    onBookmarkClick = onBookmarkClick,
+                    onCardClick = { onNewsItemClick(it.id) }
+                )
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -204,7 +197,7 @@ fun EmptyFeedView(onAddFeedClick: () -> Unit) {
             .fillMaxSize()
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Center // Korrigiert von verticalAlignment
     ) {
         Icon(
             imageVector = Icons.Default.Notifications,
@@ -217,24 +210,20 @@ fun EmptyFeedView(onAddFeedClick: () -> Unit) {
 
         Text(
             text = "No Articles Yet",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface
+            style = MaterialTheme.typography.headlineSmall
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Add some RSS feeds to start reading news articles in your feed",
+            text = "Add some RSS feeds to start reading news",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Button(
-            onClick = onAddFeedClick,
-            modifier = Modifier.padding(8.dp)
-        ) {
+        Button(onClick = onAddFeedClick) {
             Icon(
                 imageVector = Icons.Default.Add,
                 contentDescription = null,

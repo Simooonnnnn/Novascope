@@ -1,8 +1,8 @@
-// app/src/main/java/com/example/novascope/viewmodel/NovascopeViewModel.kt
 package com.example.novascope.viewmodel
 
 import android.content.Context
 import android.util.Log
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.novascope.ai.ArticleSummarizer
@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Collections
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -34,10 +33,10 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     private val feedRepository = FeedRepository(context)
     private val articleSummarizer = ArticleSummarizer(context)
 
-    // Concurrent tracking to prevent duplicate work
-    private val feedsBeingFetched = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+    // Tracking state
     private val isLoadingFeeds = AtomicBoolean(false)
     private var currentLoadJob: Job? = null
+    private var lifecycleObserver: LifecycleEventObserver? = null
 
     // UI state with optimized updates
     data class UiState(
@@ -86,6 +85,17 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
+    // Add lifecycle observer management
+    fun attachLifecycleObserver(observer: LifecycleEventObserver) {
+        lifecycleObserver = observer
+    }
+
+    fun detachLifecycleObserver(observer: LifecycleEventObserver) {
+        if (lifecycleObserver === observer) {
+            lifecycleObserver = null
+        }
+    }
+
     // Load all feeds with optimized parallel loading
     fun loadFeeds(forceRefresh: Boolean = false) {
         // Cancel any existing load job
@@ -97,83 +107,56 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
 
         currentLoadJob = viewModelScope.launch {
-            if (forceRefresh) {
-                _uiState.update { it.copy(isRefreshing = true, errorMessage = null) }
-                // Clear cache when forcing refresh
-                rssService.clearCache()
-            } else {
-                _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            }
-
             try {
-                val allItems = mutableListOf<NewsItem>()
+                // Update loading state
+                _uiState.update {
+                    it.copy(
+                        isRefreshing = forceRefresh,
+                        isLoading = !forceRefresh,
+                        errorMessage = null
+                    )
+                }
+
+                if (forceRefresh) {
+                    // Clear cache when forcing refresh
+                    rssService.clearCache()
+                }
+
                 val enabledFeeds = feedRepository.getEnabledFeeds()
+
+                // Don't proceed if no feeds are enabled
+                if (enabledFeeds.isEmpty()) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            newsItems = emptyList(),
+                            bookmarkedItems = emptyList()
+                        )
+                    }
+                    return@launch
+                }
 
                 // Process feeds in parallel
                 val deferredItems = enabledFeeds.map { feed ->
                     async(Dispatchers.IO) {
                         try {
-                            if (!feedsBeingFetched.add(feed.id)) {
-                                return@async emptyList<NewsItem>() // Skip if already fetching
-                            }
-
                             val items = rssService.fetchFeed(feed.url, forceRefresh)
-
                             // Add the feed ID to each item for tracking
                             items.map { it.copy(feedId = feed.id) }
                         } catch (e: Exception) {
                             Log.e("ViewModel", "Error loading feed ${feed.name}: ${e.message}")
-                            emptyList<NewsItem>()
-                        } finally {
-                            feedsBeingFetched.remove(feed.id)
+                            emptyList()
                         }
                     }
                 }
 
                 // Await all results
-                val results = deferredItems.awaitAll()
+                val results = deferredItems.awaitAll().flatten()
 
-                // Combine and dedup results
-                val itemsMap = ConcurrentHashMap<String, NewsItem>()
-                results.forEach { items ->
-                    items.forEach { item ->
-                        // Preserve bookmark status from cache
-                        val existingItem = articlesCache[item.id]
-                        if (existingItem != null && existingItem.isBookmarked) {
-                            itemsMap[item.id] = item.copy(isBookmarked = true)
-                        } else {
-                            itemsMap[item.id] = item
-                        }
-                    }
-                }
+                // Process results efficiently
+                processNewsItems(results)
 
-                // Update cache
-                articlesCache.putAll(itemsMap)
-
-                // Convert to list and sort
-                allItems.addAll(itemsMap.values)
-                val sortedItems = allItems.sortedByDescending { it.publishTimeMillis }
-
-                // Mark first item as big article
-                val displayItems = if (sortedItems.isNotEmpty()) {
-                    listOf(sortedItems.first().copy(isBigArticle = true)) +
-                            sortedItems.drop(1).map { it.copy(isBigArticle = false) }
-                } else {
-                    sortedItems
-                }
-
-                // Update bookmarked items list
-                val bookmarkedItems = displayItems.filter { it.isBookmarked }
-
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        newsItems = displayItems,
-                        bookmarkedItems = bookmarkedItems,
-                        errorMessage = null
-                    )
-                }
             } catch (e: Exception) {
                 Log.e("ViewModel", "Error loading feeds: ${e.message}")
                 _uiState.update {
@@ -186,6 +169,44 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
             } finally {
                 isLoadingFeeds.set(false)
             }
+        }
+    }
+
+    private fun processNewsItems(newItems: List<NewsItem>) {
+        // Preserve bookmarks and update cache
+        val processedItems = newItems.map { item ->
+            val existingItem = articlesCache[item.id]
+            val updatedItem = if (existingItem?.isBookmarked == true) {
+                item.copy(isBookmarked = true)
+            } else {
+                item
+            }
+            articlesCache[item.id] = updatedItem
+            updatedItem
+        }
+
+        // Sort by publish time
+        val sortedItems = processedItems.sortedByDescending { it.publishTimeMillis }
+
+        // Mark first item as big article
+        val displayItems = if (sortedItems.isNotEmpty()) {
+            listOf(sortedItems.first().copy(isBigArticle = true)) +
+                    sortedItems.drop(1).map { it.copy(isBigArticle = false) }
+        } else {
+            sortedItems
+        }
+
+        // Update bookmarked items list and main state
+        val bookmarkedItems = displayItems.filter { it.isBookmarked }
+
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                isRefreshing = false,
+                newsItems = displayItems,
+                bookmarkedItems = bookmarkedItems,
+                errorMessage = null
+            )
         }
     }
 
@@ -217,11 +238,6 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // Get feeds by category
-    fun getFeedsByCategory(category: FeedCategory): List<Feed> {
-        return feedRepository.getFeedsByCategory(category)
-    }
-
     // Add a new feed
     fun addFeed(name: String, url: String, category: FeedCategory) {
         viewModelScope.launch {
@@ -242,7 +258,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         viewModelScope.launch {
             feedRepository.deleteFeed(feedId)
 
-            // Remove associated articles from UI to prevent showing deleted feed's content
+            // Remove associated articles from UI
             _uiState.update { state ->
                 val updatedItems = state.newsItems.filter { it.feedId != feedId }
                 val updatedBookmarks = state.bookmarkedItems.filter { it.feedId != feedId }
@@ -280,11 +296,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         return withContext(Dispatchers.IO) {
             try {
                 val items = rssService.fetchFeed(url)
-                if (items.isNotEmpty()) {
-                    items.first().sourceName
-                } else {
-                    url
-                }
+                items.firstOrNull()?.sourceName ?: url
             } catch (e: Exception) {
                 url
             }
@@ -316,22 +328,16 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                     _uiState.update { it.copy(summaryState = summaryState) }
                 }
             } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        summaryState = SummaryState.Error("Error generating summary: ${e.message}")
-                    )
-                }
-
-                // Try fallback summary
+                // Try fallback summary on error
                 try {
                     val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
                     _uiState.update {
-                        it.copy(
-                            summaryState = SummaryState.Success(fallbackSummary)
-                        )
+                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
                     }
                 } catch (e: Exception) {
-                    // Keep the error state
+                    _uiState.update {
+                        it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
+                    }
                 }
             }
         }
@@ -348,10 +354,11 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         currentLoadJob?.cancel()
         articleSummarizer.close()
         articlesCache.clear()
+        lifecycleObserver = null
     }
 }
 
-// Settings data classes
+// Settings data class
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val useDynamicColor: Boolean = true,

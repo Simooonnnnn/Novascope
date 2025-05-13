@@ -1,10 +1,8 @@
-// app/src/main/java/com/example/novascope/ui/screens/SavedScreen.kt
 package com.example.novascope.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BookmarkRemove
 import androidx.compose.material3.*
@@ -24,11 +22,11 @@ import com.example.novascope.viewmodel.NovascopeViewModel
 @Composable
 fun SavedScreen(
     viewModel: NovascopeViewModel,
-    onNewsItemClick: (String) -> Unit = {},
+    onNewsItemClick: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Use derived state to avoid unnecessary recompositions when only other parts of uiState change
+    // Use derived state to avoid unnecessary recompositions
     val bookmarkedItems by remember(uiState.bookmarkedItems) {
         derivedStateOf { uiState.bookmarkedItems }
     }
@@ -36,65 +34,67 @@ fun SavedScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Saved Articles") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
+                title = { Text("Saved Articles") }
             )
         }
     ) { innerPadding ->
-        if (bookmarkedItems.isEmpty()) {
-            // Show empty state
-            EmptyBookmarksView(modifier = Modifier.padding(innerPadding))
-        } else {
-            // Show bookmarked items with optimized LazyColumn
-            LazyColumn(
-                contentPadding = PaddingValues(
-                    top = innerPadding.calculateTopPadding(),
-                    bottom = innerPadding.calculateBottomPadding() + 16.dp,
-                    start = 16.dp,
-                    end = 16.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // Add header to indicate count
-                item {
-                    Text(
-                        text = "Saved Articles (${bookmarkedItems.size})",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
-
-                // Use itemsIndexed with keys for stable identity
-                itemsIndexed(
-                    items = bookmarkedItems,
-                    key = { _, item -> item.id } // Use article ID as stable key
-                ) { _, item ->
-                    SmallNewsCard(
-                        newsItem = item,
-                        onBookmarkClick = {
-                            viewModel.toggleBookmark(item.id)
-                        },
-                        onCardClick = { onNewsItemClick(item.id) }
-                    )
-                }
-
-                // Extra space at bottom
-                item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
+        ) {
+            if (bookmarkedItems.isEmpty()) {
+                EmptyBookmarksView()
+            } else {
+                SavedArticlesList(
+                    bookmarkedItems = bookmarkedItems,
+                    onNewsItemClick = onNewsItemClick,
+                    onBookmarkClick = { viewModel.toggleBookmark(it.id) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun EmptyBookmarksView(modifier: Modifier = Modifier) {
+private fun SavedArticlesList(
+    bookmarkedItems: List<NewsItem>,
+    onNewsItemClick: (String) -> Unit,
+    onBookmarkClick: (NewsItem) -> Unit
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text(
+                text = "Saved Articles (${bookmarkedItems.size})",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
+        // Use stable keys for items
+        items(
+            items = bookmarkedItems,
+            key = { it.id }
+        ) { item ->
+            SmallNewsCard(
+                newsItem = item,
+                onBookmarkClick = onBookmarkClick,
+                onCardClick = { onNewsItemClick(item.id) }
+            )
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun EmptyBookmarksView() {
     Box(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         contentAlignment = Alignment.Center
@@ -103,7 +103,6 @@ private fun EmptyBookmarksView(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(16.dp)
         ) {
-            // Pre-computed icon size
             Icon(
                 imageVector = Icons.Default.BookmarkRemove,
                 contentDescription = null,
@@ -122,7 +121,7 @@ private fun EmptyBookmarksView(modifier: Modifier = Modifier) {
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Articles you bookmark will appear here for easier access",
+                text = "Articles you bookmark will appear here",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

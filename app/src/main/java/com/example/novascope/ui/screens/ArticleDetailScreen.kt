@@ -2,12 +2,6 @@ package com.example.novascope.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -24,24 +18,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
-import coil.size.Size
 import com.example.novascope.ai.SummaryState
 import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.AiSummaryCard
 import com.example.novascope.viewmodel.NovascopeViewModel
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,26 +40,28 @@ fun ArticleDetailScreen(
     onBackClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Find article in state
     val article = remember(articleId, uiState.newsItems) {
         uiState.newsItems.find { it.id == articleId }
     } ?: return
 
     val summaryState = uiState.summaryState
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
-    // Select article for AI summary (only once per article)
+    // UI state
+    var showSummary by remember { mutableStateOf(true) }
+    val isBookmarked = remember(article.id, uiState.newsItems) {
+        uiState.newsItems.find { it.id == articleId }?.isBookmarked ?: false
+    }
+
+    // Select article for AI summary
     LaunchedEffect(articleId) {
         viewModel.selectArticle(articleId)
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    var showSummary by remember { mutableStateOf(true) }
 
-    // Track if article is bookmarked
-    val isBookmarked = remember(article.id, article.isBookmarked) { article.isBookmarked }
-
-    // Use LazyColumn instead of ScrollState for better performance
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
@@ -88,8 +79,8 @@ fun ArticleDetailScreen(
                     // AI summary toggle
                     IconButton(onClick = { showSummary = !showSummary }) {
                         Icon(
-                            imageVector = if (showSummary) Icons.Rounded.Psychology else Icons.Rounded.PsychologyAlt,
-                            contentDescription = if (showSummary) "Hide AI Summary" else "Show AI Summary",
+                            imageVector = Icons.Rounded.Psychology,
+                            contentDescription = if (showSummary) "Hide Summary" else "Show Summary",
                             tint = if (showSummary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -98,28 +89,27 @@ fun ArticleDetailScreen(
                     IconButton(onClick = { viewModel.toggleBookmark(article.id) }) {
                         Icon(
                             imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                            contentDescription = "Bookmark Article",
+                            contentDescription = "Bookmark",
                             tint = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
 
-                    // Share button
-                    IconButton(onClick = {
-                        article.url?.let { url ->
+                    // Share button (only if article has URL)
+                    article.url?.let { url ->
+                        IconButton(onClick = {
                             val sendIntent = Intent().apply {
                                 action = Intent.ACTION_SEND
                                 putExtra(Intent.EXTRA_TEXT, url)
                                 putExtra(Intent.EXTRA_TITLE, article.title)
                                 type = "text/plain"
                             }
-                            val shareIntent = Intent.createChooser(sendIntent, null)
-                            context.startActivity(shareIntent)
+                            context.startActivity(Intent.createChooser(sendIntent, null))
+                        }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Share,
+                                contentDescription = "Share"
+                            )
                         }
-                    }) {
-                        Icon(
-                            imageVector = Icons.Rounded.Share,
-                            contentDescription = "Share Article"
-                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -147,50 +137,40 @@ fun ArticleDetailScreen(
             }
         }
     ) { innerPadding ->
-        Box(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Use LazyColumn instead of Column+ScrollState for better performance
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // Image Header
+            // Image Header
+            item {
+                ArticleHeaderImage(article)
+            }
+
+            // AI Summary Card (if enabled)
+            if (showSummary) {
                 item {
-                    ArticleHeaderImage(article)
+                    AiSummaryCard(
+                        summaryState = summaryState,
+                        onRetry = { viewModel.selectArticle(article.id) },
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
                 }
+            }
 
-                // AI Summary Card (if enabled)
-                item {
-                    AnimatedVisibility(
-                        visible = showSummary,
-                        enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
-                        exit = fadeOut() + slideOutVertically(targetOffsetY = { -it })
-                    ) {
-                        AiSummaryCard(
-                            summaryState = summaryState,
-                            onRetry = { viewModel.selectArticle(article.id) },
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                    }
-                }
+            // Article content
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = article.content ?: "No content available for this article. Please open in browser to read the full article.",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
 
-                // Article content
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = article.content ?: "No content available for this article. Please open in browser to read the full article.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Spacer(modifier = Modifier.height(80.dp)) // Space for FAB
-                    }
+                    Spacer(modifier = Modifier.height(80.dp)) // Space for FAB
                 }
             }
         }
@@ -211,14 +191,12 @@ fun ArticleHeaderImage(article: NewsItem) {
             val painter = rememberAsyncImagePainter(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(url)
-                    .size(Size.ORIGINAL) // Use original size for header
                     .crossfade(true)
                     .build()
             )
 
             // Show loading state
-            val imageState = painter.state
-            if (imageState is AsyncImagePainter.State.Loading) {
+            if (painter.state is AsyncImagePainter.State.Loading) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -279,13 +257,7 @@ fun ArticleHeaderImage(article: NewsItem) {
                 ) {
                     article.sourceIconUrl?.let { url ->
                         Image(
-                            painter = rememberAsyncImagePainter(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(url)
-                                    .size(36, 36) // Specify size for small icon
-                                    .crossfade(true)
-                                    .build()
-                            ),
+                            painter = rememberAsyncImagePainter(url),
                             contentDescription = "Source icon",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
