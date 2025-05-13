@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/novascope/viewmodel/NovascopeViewModel.kt
 package com.example.novascope.viewmodel
 
 import android.content.Context
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -37,6 +39,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     private val isLoadingFeeds = AtomicBoolean(false)
     private var currentLoadJob: Job? = null
     private var lifecycleObserver: LifecycleEventObserver? = null
+    private var currentSummaryJob: Job? = null
 
     // UI state with optimized updates
     data class UiState(
@@ -78,9 +81,13 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         // Initialize the AI model in a non-blocking way
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                articleSummarizer.initializeModel()
+                // Add timeout to prevent blocking if model initialization takes too long
+                withTimeoutOrNull(10000L) {
+                    articleSummarizer.initializeModel()
+                } ?: Log.w("ViewModel", "Model initialization timed out")
             } catch (e: Exception) {
                 Log.e("ViewModel", "Error initializing AI model: ${e.message}")
+                // Don't crash, continue without the model
             }
         }
     }
@@ -231,9 +238,17 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 state.bookmarkedItems.filter { it.id != newsItemId }
             }
 
+            // If this is the selected article, update that too
+            val updatedSelectedArticle = if (state.selectedArticle?.id == newsItemId) {
+                updatedItem
+            } else {
+                state.selectedArticle
+            }
+
             state.copy(
                 newsItems = updatedItems,
-                bookmarkedItems = updatedBookmarks
+                bookmarkedItems = updatedBookmarks,
+                selectedArticle = updatedSelectedArticle
             )
         }
     }
@@ -295,7 +310,11 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     suspend fun getFeedInfoFromUrl(url: String): String {
         return withContext(Dispatchers.IO) {
             try {
-                val items = rssService.fetchFeed(url)
+                // Add timeout to prevent blocking
+                val items = withTimeoutOrNull(5000L) {
+                    rssService.fetchFeed(url)
+                } ?: return@withContext url
+
                 items.firstOrNull()?.sourceName ?: url
             } catch (e: Exception) {
                 url
@@ -305,8 +324,13 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
 
     // Select article for detail view with optimized summary loading
     fun selectArticle(articleId: String) {
+        // Cancel any existing summary generation job
+        currentSummaryJob?.cancel()
+
+        // First check if we already have this article in cache
         val article = articlesCache[articleId] ?:
-        _uiState.value.newsItems.find { it.id == articleId }
+        _uiState.value.newsItems.find { it.id == articleId } ?:
+        _uiState.value.bookmarkedItems.find { it.id == articleId }
 
         if (article != null) {
             _uiState.update { it.copy(selectedArticle = article) }
@@ -315,19 +339,38 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
             if (_settings.value.enableAiSummary) {
                 generateSummary(article)
             }
+        } else {
+            // If article not found, set error state
+            _uiState.update {
+                it.copy(
+                    summaryState = SummaryState.Error("Article not found")
+                )
+            }
         }
     }
 
     // Generate summary with local AI and caching
     private fun generateSummary(newsItem: NewsItem) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(summaryState = SummaryState.Loading) }
+        // Set loading state immediately
+        _uiState.update { it.copy(summaryState = SummaryState.Loading) }
 
+        currentSummaryJob = viewModelScope.launch {
             try {
-                articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
-                    _uiState.update { it.copy(summaryState = summaryState) }
+                // Set timeout to prevent hanging if model is slow
+                withTimeoutOrNull(10000L) {
+                    articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
+                        _uiState.update { it.copy(summaryState = summaryState) }
+                    }
+                } ?: run {
+                    // Timeout occurred, use fallback
+                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
+                    _uiState.update {
+                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
+                    }
                 }
             } catch (e: Exception) {
+                Log.e("ViewModel", "Error generating summary: ${e.message}")
+
                 // Try fallback summary on error
                 try {
                     val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
@@ -352,6 +395,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         currentLoadJob?.cancel()
+        currentSummaryJob?.cancel()
         articleSummarizer.close()
         articlesCache.clear()
         lifecycleObserver = null

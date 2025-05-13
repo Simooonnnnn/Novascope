@@ -1,4 +1,4 @@
-// Updated MainActivity.kt with integrated navigation
+// app/src/main/java/com/example/novascope/MainActivity.kt
 package com.example.novascope
 
 import android.os.Bundle
@@ -144,7 +144,11 @@ fun NovascopeApp() {
 
         // Show bottom nav only on main screens
         val showBottomNav = remember(currentRoute) {
-            bottomNavItems.any { it.route == currentRoute }
+            bottomNavItems.any {
+                currentRoute == it.route ||
+                        // Handle pattern matching for routes with arguments
+                        (it.route.contains("{") && currentRoute?.startsWith(it.route.substringBefore("{")) == true)
+            }
         }
 
         // Get local context for ViewModel
@@ -152,9 +156,6 @@ fun NovascopeApp() {
 
         // Create ViewModel
         val viewModel: NovascopeViewModel = viewModel { NovascopeViewModel(context) }
-
-        // State for navigation
-        var selectedArticleId by remember { mutableStateOf<String?>(null) }
 
         Scaffold(
             bottomBar = {
@@ -213,13 +214,17 @@ fun NovascopeApp() {
                             navArgument("articleId") { type = NavType.StringType }
                         )
                     ) { backStackEntry ->
-                        val articleId = backStackEntry.arguments?.getString("articleId") ?: return@composable
-
-                        ArticleDetailScreen(
-                            articleId = articleId,
-                            viewModel = viewModel,
-                            onBackClick = { navController.popBackStack() }
-                        )
+                        val articleId = backStackEntry.arguments?.getString("articleId") ?: ""
+                        if (articleId.isNotEmpty()) {
+                            ArticleDetailScreen(
+                                articleId = articleId,
+                                viewModel = viewModel,
+                                onBackClick = { navController.popBackStack() }
+                            )
+                        } else {
+                            // Handle invalid article ID
+                            navController.popBackStack()
+                        }
                     }
                 }
             }
@@ -233,15 +238,17 @@ fun NovascopeBottomNav(navController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route
 
     NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 8.dp
+        // Using a completely flat navigation bar style like in CsBeCountdown
+        tonalElevation = 0.dp,
+        // Using default container color from Material3
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         bottomNavItems.forEach { screen ->
             val selected = currentRoute == screen.route
 
             NavigationBarItem(
                 icon = {
+                    // Simple icon without animation for now
                     Icon(
                         imageVector = if (selected) screen.selectedIcon else screen.unselectedIcon,
                         contentDescription = screen.title
@@ -249,6 +256,7 @@ fun NovascopeBottomNav(navController: NavHostController) {
                 },
                 label = { Text(screen.title) },
                 selected = selected,
+                // Let Material 3 handle colors by default - no explicit colors specified
                 onClick = {
                     navController.navigate(screen.route) {
                         // Pop up to the start destination of the graph to

@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/novascope/ui/screens/ArticleDetailScreen.kt
 package com.example.novascope.ui.screens
 
 import android.content.Intent
@@ -41,10 +42,43 @@ fun ArticleDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Find article in state
+    // Find article in state - add a crash-safe fallback
     val article = remember(articleId, uiState.newsItems) {
-        uiState.newsItems.find { it.id == articleId }
-    } ?: return
+        // First look in selected article - this is what ViewModel updates
+        uiState.selectedArticle?.takeIf { it.id == articleId }
+        // Then look in the full list
+            ?: uiState.newsItems.find { it.id == articleId }
+            // Then in bookmarked items
+            ?: uiState.bookmarkedItems.find { it.id == articleId }
+    }
+
+    // If article is null, show a loading state or error instead of crashing
+    if (article == null) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Loading article...")
+                Spacer(modifier = Modifier.height(24.dp))
+                TextButton(onClick = onBackClick) {
+                    Text("Go Back")
+                }
+            }
+        }
+
+        // Request the article anyway in case it's a delayed load
+        LaunchedEffect(articleId) {
+            viewModel.selectArticle(articleId)
+        }
+
+        return
+    }
 
     val summaryState = uiState.summaryState
     val context = LocalContext.current
@@ -52,7 +86,7 @@ fun ArticleDetailScreen(
     // UI state
     var showSummary by remember { mutableStateOf(true) }
     val isBookmarked = remember(article.id, uiState.newsItems) {
-        uiState.newsItems.find { it.id == articleId }?.isBookmarked ?: false
+        uiState.newsItems.find { it.id == articleId }?.isBookmarked ?: article.isBookmarked
     }
 
     // Select article for AI summary

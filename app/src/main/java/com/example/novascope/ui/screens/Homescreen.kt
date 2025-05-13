@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/novascope/ui/screens/HomeScreen.kt
 package com.example.novascope.ui.screens
 
 import androidx.compose.foundation.layout.*
@@ -79,6 +80,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding())
         ) {
+            // Show loading indicator at the top
             if (uiState.isLoading && !uiState.isRefreshing) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
@@ -110,7 +112,7 @@ private fun NewsContent(
 ) {
     LazyColumn(
         contentPadding = PaddingValues(
-            bottom = bottomPadding,
+            bottom = bottomPadding + 16.dp,
             start = 16.dp,
             end = 16.dp
         ),
@@ -197,7 +199,7 @@ fun EmptyFeedView(onAddFeedClick: () -> Unit) {
             .fillMaxSize()
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center // Korrigiert von verticalAlignment
+        verticalArrangement = Arrangement.Center
     ) {
         Icon(
             imageVector = Icons.Default.Notifications,

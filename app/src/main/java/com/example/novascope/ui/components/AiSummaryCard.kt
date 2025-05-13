@@ -1,7 +1,8 @@
-// Simplified AiSummaryCard.kt
+// app/src/main/java/com/example/novascope/ui/components/AiSummaryCard.kt
 package com.example.novascope.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -29,7 +30,7 @@ fun AiSummaryCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(vertical = 16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer
         )
@@ -60,22 +61,30 @@ fun AiSummaryCard(
             // Content based on state
             AnimatedContent(
                 targetState = summaryState,
-                transitionSpec = { fadeIn() togetherWith fadeOut() }
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "Summary State Animation"
             ) { state ->
                 when (state) {
                     is SummaryState.Loading -> {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .heightIn(min = 100.dp)
                                 .padding(vertical = 16.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                CircularProgressIndicator()
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(36.dp),
+                                    strokeWidth = 3.dp
+                                )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("Generating summary...")
+                                Text(
+                                    "Generating summary...",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
                         }
                     }
@@ -84,7 +93,8 @@ fun AiSummaryCard(
                         Text(
                             text = state.summary,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(vertical = 8.dp)
                         )
                     }
 
@@ -98,17 +108,44 @@ fun AiSummaryCard(
                             Icon(
                                 imageVector = Icons.Filled.Warning,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(state.message)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = onRetry) {
+                            Text(
+                                text = state.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = onRetry,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
                                 Text("Retry")
                             }
                         }
                     }
                 }
+            }
+
+            // Add a source attribution for the AI model
+            AnimatedVisibility(
+                visible = summaryState is SummaryState.Success,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Text(
+                    text = "Generated using SmolLM2-135M",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                )
             }
         }
     }

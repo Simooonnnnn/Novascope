@@ -1,10 +1,13 @@
+// app/src/main/java/com/example/novascope/data/RssService.kt
 package com.example.novascope.data
 
 import android.util.Log
 import com.example.novascope.model.NewsItem
 import com.prof18.rssparser.RssParser
+import com.prof18.rssparser.model.RssChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -55,7 +58,35 @@ class RssService {
                 }
 
                 Log.d("RssService", "Fetching feed from $url")
-                val channel = rssParser.getRssChannel(url)
+
+                // Add timeout to prevent hanging on bad connections
+                val channel = withTimeoutOrNull(15000L) {
+                    try {
+                        rssParser.getRssChannel(url)
+                    } catch (e: Exception) {
+                        Log.e("RssService", "Error parsing RSS: ${e.message}")
+                        // Erstelle einen leeren Channel als Fallback
+                        RssChannel(
+                            title = "Unknown Feed",
+                            link = url,
+                            description = "",
+                            lastBuildDate = "",
+                            image = null,
+                            items = emptyList(),
+                            updatePeriod = null,
+                            itunesChannelData = null
+                        )
+                    }
+                } ?: RssChannel(
+                    title = "Unknown Feed",
+                    link = url,
+                    description = "",
+                    lastBuildDate = "",
+                    image = null,
+                    items = emptyList(),
+                    updatePeriod = null,
+                    itunesChannelData = null
+                )
 
                 // Extract feed icon if available
                 val feedIcon = channel.image?.url
@@ -85,7 +116,7 @@ class RssService {
             } catch (e: Exception) {
                 Log.e("RssService", "Error fetching feed: ${e.message}")
                 // Return cached entry if it exists, even if expired
-                feedCache[url]?.items ?: emptyList()
+                return@withContext feedCache[url]?.items ?: emptyList()
             }
         }
     }

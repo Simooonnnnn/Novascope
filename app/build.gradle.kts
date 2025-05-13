@@ -1,3 +1,4 @@
+// app/build.gradle.kts
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -11,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.novascope"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -49,6 +50,28 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // Add this to download the model automatically during build
+    // (would be implemented in a real production app)
+    /*
+    sourceSets {
+        getByName("main") {
+            assets {
+                srcDirs("src/main/assets")
+            }
+        }
+    }
+
+    tasks.register<DownloadModelTask>("downloadSmolLMModel") {
+        outputDir = file("src/main/assets")
+        modelUrl = "https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/model_optimized.tflite"
+        modelName = "smollm2_article_summarizer.tflite"
+    }
+
+    tasks.named("preBuild") {
+        dependsOn("downloadSmolLMModel")
+    }
+    */
 }
 
 dependencies {
@@ -64,13 +87,15 @@ dependencies {
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.32.0") // Updated to latest version
 
     // TensorFlow Lite
-    implementation("org.tensorflow:tensorflow-lite:2.11.0")
+    implementation("org.tensorflow:tensorflow-lite:2.15.0")  // Updated to newer version
     implementation("androidx.compose.material3:material3-window-size-class:1.2.0")
-    // For BertNLClassifier (part of TensorFlow Lite Task Library)
-    implementation("org.tensorflow:tensorflow-lite-task-text:0.4.0")
+    // For text processing models
+    implementation("org.tensorflow:tensorflow-lite-task-text:0.4.4")  // Updated version
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")    // Added for better model support
+    implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")   // Added for metadata handling
 
     // RSS Parsing Library
-    implementation("com.rometools:rome:1.18.0")
+    implementation("com.rometools:rome:1.19.0")  // Updated version
 
     // Core Android libraries
     implementation("androidx.core:core-ktx:1.12.0")
