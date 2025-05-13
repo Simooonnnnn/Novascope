@@ -1,21 +1,23 @@
-// Simplified NewsComponents.kt
 package com.example.novascope.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.novascope.model.NewsItem
-import androidx.compose.ui.draw.clip
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,7 +32,15 @@ fun LargeNewsCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        onClick = { onCardClick(newsItem) }
+        onClick = { onCardClick(newsItem) },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 0.dp,
+            hoveredElevation = 2.dp,
+            pressedElevation = 1.dp
+        )
     ) {
         Column {
             // Article image
@@ -46,12 +56,28 @@ fun LargeNewsCard(
             }
 
             Column(modifier = Modifier.padding(16.dp)) {
-                // Source name
-                Text(
-                    text = newsItem.sourceName,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                // Source row with icon if available
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    newsItem.sourceIconUrl?.let { iconUrl ->
+                        AsyncImage(
+                            model = iconUrl,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+
+                    Text(
+                        text = newsItem.sourceName,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -73,14 +99,16 @@ fun LargeNewsCard(
                 ) {
                     Text(
                         text = newsItem.publishTime,
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     IconButton(
                         onClick = {
                             isBookmarked = !isBookmarked
-                            onBookmarkClick(newsItem)
-                        }
+                            onBookmarkClick(newsItem.copy(isBookmarked = !isBookmarked))
+                        },
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
                             imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
@@ -107,69 +135,100 @@ fun SmallNewsCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        onClick = { onCardClick(newsItem) }
+        onClick = { onCardClick(newsItem) },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 0.dp,
+            hoveredElevation = 2.dp,
+            pressedElevation = 1.dp
+        )
     ) {
-        Row(
+        Column( // Change from Row to Column to stack content vertically
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Content column
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = newsItem.sourceName,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = newsItem.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = newsItem.publishTime,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-
-                    IconButton(
-                        onClick = {
-                            isBookmarked = !isBookmarked
-                            onBookmarkClick(newsItem)
-                        },
-                        modifier = Modifier.size(36.dp)
+            Row( // Inner Row for title, source, and image
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Content column
+                Column(modifier = Modifier.weight(1f)) {
+                    // Source row with icon if available
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                            contentDescription = "Bookmark",
-                            tint = MaterialTheme.colorScheme.primary
+                        newsItem.sourceIconUrl?.let { iconUrl ->
+                            AsyncImage(
+                                model = iconUrl,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+
+                        Text(
+                            text = newsItem.sourceName,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = newsItem.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Article thumbnail
+                newsItem.imageUrl?.let { url ->
+                    Spacer(modifier = Modifier.width(16.dp))
+                    AsyncImage(
+                        model = url,
+                        contentDescription = "Article thumbnail",
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
                 }
             }
 
-            // Article thumbnail
-            newsItem.imageUrl?.let { url ->
-                Spacer(modifier = Modifier.width(16.dp))
-                AsyncImage(
-                    model = url,
-                    contentDescription = "Article thumbnail",
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
+            Spacer(modifier = Modifier.height(16.dp)) // Add space between the content row and the bottom row
+
+            // Bottom row with time and bookmark - now outside the content column
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = newsItem.publishTime,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                IconButton(
+                    onClick = {
+                        isBookmarked = !isBookmarked
+                        onBookmarkClick(newsItem.copy(isBookmarked = !isBookmarked))
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = "Bookmark",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }

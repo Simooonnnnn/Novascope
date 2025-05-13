@@ -1,11 +1,8 @@
 package com.example.novascope.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -17,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.LargeNewsCard
 import com.example.novascope.ui.components.SmallNewsCard
 import com.example.novascope.viewmodel.NovascopeViewModel
@@ -58,7 +54,8 @@ fun HomeScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         }
@@ -133,32 +130,28 @@ fun HomeScreen(
                         }
                     }
 
-                    // Featured article
-                    val featuredArticle = newsItems.firstOrNull { it.isBigArticle }
-                    if (featuredArticle != null) {
-                        item {
+                    // Articles with big card every few items
+                    itemsIndexed(newsItems) { index, item ->
+                        // Display a big card for first item and every 5th item thereafter
+                        val useBigCard = (index == 0 || (index + 1) % 5 == 0)
+
+                        if (useBigCard) {
                             LargeNewsCard(
-                                newsItem = featuredArticle,
+                                newsItem = item,
+                                onBookmarkClick = {
+                                    viewModel.toggleBookmark(it.id)
+                                },
+                                onCardClick = { onNewsItemClick(it.id) }
+                            )
+                        } else {
+                            SmallNewsCard(
+                                newsItem = item,
                                 onBookmarkClick = {
                                     viewModel.toggleBookmark(it.id)
                                 },
                                 onCardClick = { onNewsItemClick(it.id) }
                             )
                         }
-                    }
-
-                    // Regular articles
-                    items(
-                        items = newsItems.filterNot { it.isBigArticle },
-                        key = { it.id }
-                    ) { item ->
-                        SmallNewsCard(
-                            newsItem = item,
-                            onBookmarkClick = {
-                                viewModel.toggleBookmark(it.id)
-                            },
-                            onCardClick = { onNewsItemClick(it.id) }
-                        )
                     }
 
                     // Extra space at bottom
