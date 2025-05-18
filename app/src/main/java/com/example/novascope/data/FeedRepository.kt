@@ -9,7 +9,6 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -149,17 +148,17 @@ class FeedRepository(private val context: Context) {
     // Add default feeds with optimized execution
     private fun addDefaultFeeds() {
         val defaultFeeds = listOf(
-            // News
+            // News - updated to use HTTPS
             Feed(
                 name = "CNN Top Stories",
-                url = "http://rss.cnn.com/rss/cnn_topstories.rss",
+                url = "https://rss.cnn.com/rss/cnn_topstories.rss", // Changed to HTTPS
                 category = FeedCategory.News,
                 iconUrl = "https://cdn.cnn.com/cnn/.e/img/3.0/global/misc/cnn-logo.png",
                 isDefault = true
             ),
             Feed(
                 name = "BBC News",
-                url = "http://feeds.bbci.co.uk/news/rss.xml",
+                url = "https://feeds.bbci.co.uk/news/rss.xml", // Changed to HTTPS
                 category = FeedCategory.News,
                 iconUrl = "https://news.bbcimg.co.uk/nol/shared/img/bbc_news_120x60.gif",
                 isDefault = true

@@ -45,8 +45,6 @@ class RssService {
     // Image URL regex pattern - compiled once
     private val imgPattern = "<img[^>]+src\\s*=\\s*['\"]([^'\"]+)['\"][^>]*>".toRegex()
 
-// Modify this function in app/src/main/java/com/example/novascope/data/RssService.kt
-
     suspend fun fetchFeed(url: String, forceRefresh: Boolean = false): List<NewsItem> {
         return withContext(Dispatchers.IO) {
             try {
@@ -97,7 +95,7 @@ class RssService {
                     // Calculate publish time in millis for sorting
                     val publishDateMillis = parsePublishDate(item.pubDate ?: "")
 
-                    // Safely handle content - this is where the issue likely is
+                    // Safely handle content
                     val content = when {
                         !item.content.isNullOrBlank() -> item.content
                         !item.description.isNullOrBlank() -> item.description
@@ -107,8 +105,12 @@ class RssService {
                     // Make sure we have a valid title
                     val title = item.title?.takeIf { it.isNotBlank() } ?: "No title"
 
+                    // Generate a safe ID - using a simple approach with UUID
+                    // This avoids smart cast issues with external properties
+                    val safeId = UUID.randomUUID().toString()
+
                     NewsItem(
-                        id = item.guid ?: UUID.randomUUID().toString(),
+                        id = safeId,
                         title = title,
                         imageUrl = item.image ?: (content?.let { findImageInContent(it) }),
                         sourceIconUrl = feedIcon,
@@ -134,6 +136,7 @@ class RssService {
             }
         }
     }
+
     // Check if cache has expired
     private fun isCacheExpired(timestamp: Long): Boolean {
         return System.currentTimeMillis() - timestamp > CACHE_EXPIRATION_MS
