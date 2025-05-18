@@ -45,6 +45,8 @@ class RssService {
     // Image URL regex pattern - compiled once
     private val imgPattern = "<img[^>]+src\\s*=\\s*['\"]([^'\"]+)['\"][^>]*>".toRegex()
 
+// Modify this function in app/src/main/java/com/example/novascope/data/RssService.kt
+
     suspend fun fetchFeed(url: String, forceRefresh: Boolean = false): List<NewsItem> {
         return withContext(Dispatchers.IO) {
             try {
@@ -65,7 +67,7 @@ class RssService {
                         rssParser.getRssChannel(url)
                     } catch (e: Exception) {
                         Log.e("RssService", "Error parsing RSS: ${e.message}")
-                        // Erstelle einen leeren Channel als Fallback
+                        // Create an empty channel as fallback
                         RssChannel(
                             title = "Unknown Feed",
                             link = url,
@@ -94,21 +96,30 @@ class RssService {
                 val items = channel.items.mapIndexedTo(ArrayList(channel.items.size)) { index, item ->
                     // Calculate publish time in millis for sorting
                     val publishDateMillis = parsePublishDate(item.pubDate ?: "")
+
+                    // Safely handle content - this is where the issue likely is
+                    val content = when {
+                        !item.content.isNullOrBlank() -> item.content
+                        !item.description.isNullOrBlank() -> item.description
+                        else -> "No content available"
+                    }
+
+                    // Make sure we have a valid title
                     val title = item.title?.takeIf { it.isNotBlank() } ?: "No title"
-
-
 
                     NewsItem(
                         id = item.guid ?: UUID.randomUUID().toString(),
-                        title = item.title ?: "No title",
-                        imageUrl = item.image ?: findImageInContent(item.content ?: item.description ?: ""),
+                        title = title,
+                        imageUrl = item.image ?: (content?.let { findImageInContent(it) }),
                         sourceIconUrl = feedIcon,
                         sourceName = channel.title ?: "Unknown Source",
                         publishTime = formatRelativeTime(publishDateMillis),
                         publishTimeMillis = publishDateMillis,
-                        content = item.content ?: item.description,
-                        url = item.link,
-                        isBigArticle = index == 0 // First item is displayed as big article
+                        content = content,
+                        url = item.link ?: "", // Provide an empty string if item.link is null
+                        feedId = null,
+                        isBookmarked = false,
+                        isBigArticle = index == 0
                     )
                 }
 
@@ -117,13 +128,12 @@ class RssService {
 
                 items
             } catch (e: Exception) {
-                Log.e("RssService", "Error fetching feed: ${e.message}")
+                Log.e("RssService", "Error fetching feed: ${e.message}", e)
                 // Return cached entry if it exists, even if expired
                 return@withContext feedCache[url]?.items ?: emptyList()
             }
         }
     }
-
     // Check if cache has expired
     private fun isCacheExpired(timestamp: Long): Boolean {
         return System.currentTimeMillis() - timestamp > CACHE_EXPIRATION_MS

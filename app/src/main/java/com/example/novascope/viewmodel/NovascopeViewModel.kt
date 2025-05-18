@@ -323,6 +323,9 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     }
 
     // Select article for detail view with optimized summary loading
+// Modify this method in app/src/main/java/com/example/novascope/viewmodel/NovascopeViewModel.kt
+
+    // Select article for detail view with optimized summary loading
     fun selectArticle(articleId: String) {
         // Cancel any existing summary generation job
         currentSummaryJob?.cancel()
@@ -336,13 +339,17 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
             // Always update the selected article in the UI state
             _uiState.update { it.copy(selectedArticle = article) }
 
+            // Log the found article for debugging
+            Log.d("NovascopeViewModel", "Article found: ${article.title}")
+            Log.d("NovascopeViewModel", "Article content length: ${article.content?.length ?: 0}")
+
             // Generate AI summary if feature is enabled
             if (_settings.value.enableAiSummary) {
                 generateSummary(article)
             }
         } else {
             // Better error handling when article not found
-            Log.e("ViewModel", "Article not found: $articleId")
+            Log.e("NovascopeViewModel", "Article not found: $articleId")
 
             // Set error state and clear selected article
             _uiState.update {
@@ -358,8 +365,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 loadFeeds(false)
             }
         }
-    }
-    // Generate summary with local AI and caching
+    }    // Generate summary with local AI and caching
     private fun generateSummary(newsItem: NewsItem) {
         // Set loading state immediately
         _uiState.update { it.copy(summaryState = SummaryState.Loading) }

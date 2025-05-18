@@ -3,6 +3,7 @@ package com.example.novascope.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -19,8 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +34,8 @@ import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.AiSummaryCard
 import com.example.novascope.viewmodel.NovascopeViewModel
 
+private const val TAG = "ArticleDetailScreen"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArticleDetailScreen(
@@ -41,16 +44,40 @@ fun ArticleDetailScreen(
     onBackClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
-    // Request the article immediately
+    // Add logging for debugging
     LaunchedEffect(articleId) {
+        Log.d(TAG, "Loading article with ID: $articleId")
         viewModel.selectArticle(articleId)
     }
 
-    // Find article in state with better fallback handling
-    val article = uiState.selectedArticle
-        ?: uiState.newsItems.find { it.id == articleId }
-        ?: uiState.bookmarkedItems.find { it.id == articleId }
+    // Find article with better fallback handling
+    val article = remember(articleId, uiState.selectedArticle, uiState.newsItems, uiState.bookmarkedItems) {
+        val selected = uiState.selectedArticle
+        val fromNews = uiState.newsItems.find { it.id == articleId }
+        val fromBookmarks = uiState.bookmarkedItems.find { it.id == articleId }
+
+        // Log which source we found the article in
+        when {
+            selected != null && selected.id == articleId -> {
+                Log.d(TAG, "Article found in selectedArticle")
+                selected
+            }
+            fromNews != null -> {
+                Log.d(TAG, "Article found in newsItems")
+                fromNews
+            }
+            fromBookmarks != null -> {
+                Log.d(TAG, "Article found in bookmarkedItems")
+                fromBookmarks
+            }
+            else -> {
+                Log.e(TAG, "Article not found anywhere: $articleId")
+                null
+            }
+        }
+    }
 
     // If article is null, show a loading state
     if (article == null) {
@@ -74,18 +101,49 @@ fun ArticleDetailScreen(
         return
     }
 
+    // Log article content for debugging
+    LaunchedEffect(article) {
+        Log.d(TAG, "Article loaded: ${article.title}")
+        Log.d(TAG, "Has content: ${!article.content.isNullOrBlank()}")
+        Log.d(TAG, "Has image: ${!article.imageUrl.isNullOrBlank()}")
+        Log.d(TAG, "Has URL: ${!article.url.isNullOrBlank()}")
+    }
+
     val summaryState = uiState.summaryState
-    val context = LocalContext.current
 
     // UI state
     var showSummary by remember { mutableStateOf(true) }
-    val isBookmarked = remember(article.id, uiState.newsItems) {
-        uiState.newsItems.find { it.id == articleId }?.isBookmarked ?: article.isBookmarked
+    val isBookmarked = remember(article.id, uiState.bookmarkedItems) {
+        uiState.bookmarkedItems.any { it.id == article.id }
     }
 
-    // Select article for AI summary
-    LaunchedEffect(articleId) {
-        viewModel.selectArticle(articleId)
+    // Prepare share action outside of composable
+    val shareArticle = {
+        if (!article.url.isNullOrBlank()) {
+            try {
+                val sendIntent = Intent().apply {
+                    action = Intent.ACTION_SEND
+                    putExtra(Intent.EXTRA_TEXT, article.url)
+                    putExtra(Intent.EXTRA_TITLE, article.title)
+                    type = "text/plain"
+                }
+                context.startActivity(Intent.createChooser(sendIntent, null))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sharing article: ${e.message}")
+            }
+        }
+    }
+
+    // Prepare URL open action outside of composable
+    val openArticleUrl = {
+        if (!article.url.isNullOrBlank()) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(article.url))
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error opening URL: ${e.message}")
+            }
+        }
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -123,16 +181,8 @@ fun ArticleDetailScreen(
                     }
 
                     // Share button (only if article has URL)
-                    article.url?.let { url ->
-                        IconButton(onClick = {
-                            val sendIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(Intent.EXTRA_TEXT, url)
-                                putExtra(Intent.EXTRA_TITLE, article.title)
-                                type = "text/plain"
-                            }
-                            context.startActivity(Intent.createChooser(sendIntent, null))
-                        }) {
+                    if (!article.url.isNullOrBlank()) {
+                        IconButton(onClick = shareArticle) {
                             Icon(
                                 imageVector = Icons.Rounded.Share,
                                 contentDescription = "Share"
@@ -148,12 +198,10 @@ fun ArticleDetailScreen(
             )
         },
         floatingActionButton = {
-            article.url?.let { url ->
+            // Only show FAB if article has URL
+            if (!article.url.isNullOrBlank()) {
                 FloatingActionButton(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        context.startActivity(intent)
-                    },
+                    onClick = openArticleUrl,
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ) {
@@ -186,20 +234,36 @@ fun ArticleDetailScreen(
                 }
             }
 
+            // Article Content
             item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    // Added safer null handling
-                    val content = article.content?.takeIf { it.isNotBlank() }
-                        ?: "No content available for this article. Please open in browser to read the full article."
+                    // Display content with fallback
+                    if (article.content.isNullOrBlank()) {
+                        // No content available, show message
+                        Text(
+                            text = "No content available for this article. Please open in browser to read the full article.",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    } else {
+                        // Safely handle HTML content by stripping tags if present
+                        val cleanContent = article.content
+                            .replace("<[^>]*>".toRegex(), "") // Remove HTML tags
+                            .replace("&nbsp;", " ")           // Replace &nbsp; with space
+                            .replace("&lt;", "<")             // Replace &lt; with
+                            .replace("&gt;", ">")             // Replace &gt; with >
+                            .replace("&amp;", "&")            // Replace &amp; with &
+                            .replace("&quot;", "\"")          // Replace &quot; with "
+                            .replace("&apos;", "'")           // Replace &apos; with '
 
-                    Text(
-                        text = content,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                        Text(
+                            text = cleanContent,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(80.dp))
                 }
@@ -211,80 +275,72 @@ fun ArticleDetailScreen(
 @Composable
 fun ArticleHeaderImage(article: NewsItem) {
     val headerImageHeight = 240.dp
+    val context = LocalContext.current
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(headerImageHeight)
     ) {
-        if (!article.imageUrl.isNullOrBlank()) {
-            // Only try to load image if URL is valid
-            val painter = rememberAsyncImagePainter(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(article.imageUrl)
-                    .crossfade(true)
-                    .build()
-            )
-
-            // Show loading state
-            if (painter.state is AsyncImagePainter.State.Loading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
-            } else if (painter.state is AsyncImagePainter.State.Error) {
-                // Add error state handling
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.errorContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.BrokenImage,
-                        contentDescription = "Image error",
-                        tint = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
-            }
-
-            Image(
-                painter = painter,
-                contentDescription = "Article featured image",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            // No image URL available, show placeholder
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Article,
-                    contentDescription = "No image",
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(64.dp)
-                )
-            }
-
-        } ?: Box(
+        // Default background in case image loading fails
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.primaryContainer)
-        )
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Article,
+                contentDescription = "Article",
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(64.dp)
+            )
+        }
 
-        // Gradient overlay for better text visibility
+        // Handle image loading separately
+        if (!article.imageUrl.isNullOrBlank()) {
+            // Prepare image loading outside try-catch
+            val imageRequest = ImageRequest.Builder(context)
+                .data(article.imageUrl)
+                .crossfade(true)
+                .build()
+
+            val painter = rememberAsyncImagePainter(imageRequest)
+
+            // Only show image when successfully loaded
+            when (painter.state) {
+                is AsyncImagePainter.State.Success -> {
+                    Image(
+                        painter = painter,
+                        contentDescription = "Article image",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                is AsyncImagePainter.State.Loading -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                }
+                is AsyncImagePainter.State.Error -> {
+                    Log.e(TAG, "Error loading article image: ${article.imageUrl}")
+                    // Error state is handled by the default background already set
+                }
+                else -> {
+                    // Other states handled by default background
+                }
+            }
+        }
+
+        // Gradient overlay for better text visibility - always present
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -300,7 +356,7 @@ fun ArticleHeaderImage(article: NewsItem) {
                 )
         )
 
-        // Source and title overlay
+        // Source and title overlay - always present
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -311,24 +367,38 @@ fun ArticleHeaderImage(article: NewsItem) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
+                // Source icon placeholder
                 Box(
                     modifier = Modifier
                         .size(18.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
                 ) {
-                    article.sourceIconUrl?.let { url ->
-                        Image(
-                            painter = rememberAsyncImagePainter(url),
-                            contentDescription = "Source icon",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
+                    // Handle source icon loading
+                    if (!article.sourceIconUrl.isNullOrBlank()) {
+                        val iconRequest = ImageRequest.Builder(context)
+                            .data(article.sourceIconUrl)
+                            .crossfade(true)
+                            .build()
+
+                        val iconPainter = rememberAsyncImagePainter(iconRequest)
+
+                        // Only render when successful
+                        if (iconPainter.state is AsyncImagePainter.State.Success) {
+                            Image(
+                                painter = iconPainter,
+                                contentDescription = "Source icon",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
 
+                // Source name
                 Text(
                     text = article.sourceName,
                     style = MaterialTheme.typography.labelMedium,
@@ -337,6 +407,7 @@ fun ArticleHeaderImage(article: NewsItem) {
 
                 Spacer(modifier = Modifier.width(8.dp))
 
+                // Publish time
                 Surface(
                     shape = RoundedCornerShape(4.dp),
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
@@ -350,7 +421,7 @@ fun ArticleHeaderImage(article: NewsItem) {
                 }
             }
 
-            // Title
+            // Title - always present and reliable
             Text(
                 text = article.title,
                 style = MaterialTheme.typography.headlineSmall.copy(
