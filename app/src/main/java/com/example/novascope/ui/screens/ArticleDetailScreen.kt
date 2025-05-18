@@ -241,28 +241,51 @@ fun ArticleDetailScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    // Display content with fallback
+                    // Improved content display
                     if (article.content.isNullOrBlank()) {
-                        // No content available, show message
-                        Text(
-                            text = "No content available for this article. Please open in browser to read the full article.",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
+                        // No content available, show message with button to open in browser
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "No content available for this article.",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            if (!article.url.isNullOrBlank()) {
+                                Button(onClick = openArticleUrl) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.OpenInBrowser,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Open in Browser")
+                                }
+                            }
+                        }
                     } else {
-                        // Safely handle HTML content by stripping tags if present
-                        val cleanContent = article.content
-                            .replace("<[^>]*>".toRegex(), "") // Remove HTML tags
-                            .replace("&nbsp;", " ")           // Replace &nbsp; with space
-                            .replace("&lt;", "<")             // Replace &lt; with
-                            .replace("&gt;", ">")             // Replace &gt; with >
-                            .replace("&amp;", "&")            // Replace &amp; with &
-                            .replace("&quot;", "\"")          // Replace &quot; with "
-                            .replace("&apos;", "'")           // Replace &apos; with '
+                        // Clean up the content for display
+                        val cleanContent = cleanHtmlContent(article.content)
 
                         Text(
                             text = cleanContent,
                             style = MaterialTheme.typography.bodyLarge
                         )
+
+                        // Add "Read more" button if URL is available
+                        if (!article.url.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = openArticleUrl,
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text("Read Full Article")
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(80.dp))
@@ -270,6 +293,22 @@ fun ArticleDetailScreen(
             }
         }
     }
+}
+
+// Helper function to clean HTML content
+private fun cleanHtmlContent(content: String?): String {
+    if (content.isNullOrBlank()) return ""
+
+    return content
+        .replace("<[^>]*>".toRegex(), "") // Remove HTML tags
+        .replace("&nbsp;", " ")           // Replace &nbsp; with space
+        .replace("&lt;", "<")             // Replace &lt; with
+        .replace("&gt;", ">")             // Replace &gt; with >
+        .replace("&amp;", "&")            // Replace &amp; with &
+        .replace("&quot;", "\"")          // Replace &quot; with "
+        .replace("&apos;", "'")           // Replace &apos; with '
+        .replace("\n+".toRegex(), "\n\n") // Normalize line breaks
+        .trim()
 }
 
 @Composable
