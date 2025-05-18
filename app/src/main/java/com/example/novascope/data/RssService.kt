@@ -94,6 +94,9 @@ class RssService {
                 val items = channel.items.mapIndexedTo(ArrayList(channel.items.size)) { index, item ->
                     // Calculate publish time in millis for sorting
                     val publishDateMillis = parsePublishDate(item.pubDate ?: "")
+                    val title = item.title?.takeIf { it.isNotBlank() } ?: "No title"
+
+
 
                     NewsItem(
                         id = item.guid ?: UUID.randomUUID().toString(),

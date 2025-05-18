@@ -327,12 +327,13 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         // Cancel any existing summary generation job
         currentSummaryJob?.cancel()
 
-        // First check if we already have this article in cache
-        val article = articlesCache[articleId] ?:
-        _uiState.value.newsItems.find { it.id == articleId } ?:
-        _uiState.value.bookmarkedItems.find { it.id == articleId }
+        // Try to find the article in multiple places
+        val article = articlesCache[articleId]
+            ?: _uiState.value.newsItems.find { it.id == articleId }
+            ?: _uiState.value.bookmarkedItems.find { it.id == articleId }
 
         if (article != null) {
+            // Always update the selected article in the UI state
             _uiState.update { it.copy(selectedArticle = article) }
 
             // Generate AI summary if feature is enabled
@@ -340,15 +341,24 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 generateSummary(article)
             }
         } else {
-            // If article not found, set error state
+            // Better error handling when article not found
+            Log.e("ViewModel", "Article not found: $articleId")
+
+            // Set error state and clear selected article
             _uiState.update {
                 it.copy(
-                    summaryState = SummaryState.Error("Article not found")
+                    summaryState = SummaryState.Error("Article not found"),
+                    // Important: Set selected article to null to prevent accessing non-existent data
+                    selectedArticle = null
                 )
+            }
+
+            // Try to reload feeds in case the article data is stale
+            if (!isLoadingFeeds.get()) {
+                loadFeeds(false)
             }
         }
     }
-
     // Generate summary with local AI and caching
     private fun generateSummary(newsItem: NewsItem) {
         // Set loading state immediately

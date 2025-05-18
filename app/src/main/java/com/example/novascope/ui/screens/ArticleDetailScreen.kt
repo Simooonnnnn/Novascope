@@ -42,17 +42,17 @@ fun ArticleDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Find article in state - add a crash-safe fallback
-    val article = remember(articleId, uiState.newsItems) {
-        // First look in selected article - this is what ViewModel updates
-        uiState.selectedArticle?.takeIf { it.id == articleId }
-        // Then look in the full list
-            ?: uiState.newsItems.find { it.id == articleId }
-            // Then in bookmarked items
-            ?: uiState.bookmarkedItems.find { it.id == articleId }
+    // Request the article immediately
+    LaunchedEffect(articleId) {
+        viewModel.selectArticle(articleId)
     }
 
-    // If article is null, show a loading state or error instead of crashing
+    // Find article in state with better fallback handling
+    val article = uiState.selectedArticle
+        ?: uiState.newsItems.find { it.id == articleId }
+        ?: uiState.bookmarkedItems.find { it.id == articleId }
+
+    // If article is null, show a loading state
     if (article == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -71,12 +71,6 @@ fun ArticleDetailScreen(
                 }
             }
         }
-
-        // Request the article anyway in case it's a delayed load
-        LaunchedEffect(articleId) {
-            viewModel.selectArticle(articleId)
-        }
-
         return
     }
 
@@ -192,19 +186,22 @@ fun ArticleDetailScreen(
                 }
             }
 
-            // Article content
             item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
+                    // Added safer null handling
+                    val content = article.content?.takeIf { it.isNotBlank() }
+                        ?: "No content available for this article. Please open in browser to read the full article."
+
                     Text(
-                        text = article.content ?: "No content available for this article. Please open in browser to read the full article.",
+                        text = content,
                         style = MaterialTheme.typography.bodyLarge
                     )
 
-                    Spacer(modifier = Modifier.height(80.dp)) // Space for FAB
+                    Spacer(modifier = Modifier.height(80.dp))
                 }
             }
         }
@@ -220,11 +217,11 @@ fun ArticleHeaderImage(article: NewsItem) {
             .fillMaxWidth()
             .height(headerImageHeight)
     ) {
-        // Load image with optimized settings
-        article.imageUrl?.let { url ->
+        if (!article.imageUrl.isNullOrBlank()) {
+            // Only try to load image if URL is valid
             val painter = rememberAsyncImagePainter(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(url)
+                    .data(article.imageUrl)
                     .crossfade(true)
                     .build()
             )
@@ -242,6 +239,21 @@ fun ArticleHeaderImage(article: NewsItem) {
                         modifier = Modifier.size(48.dp)
                     )
                 }
+            } else if (painter.state is AsyncImagePainter.State.Error) {
+                // Add error state handling
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.errorContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.BrokenImage,
+                        contentDescription = "Image error",
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
             }
 
             Image(
@@ -250,6 +262,22 @@ fun ArticleHeaderImage(article: NewsItem) {
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+        } else {
+            // No image URL available, show placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Article,
+                    contentDescription = "No image",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(64.dp)
+                )
+            }
+
         } ?: Box(
             modifier = Modifier
                 .fillMaxSize()
