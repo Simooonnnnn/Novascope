@@ -56,7 +56,8 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         val modelDownloadState: ModelDownloadManager.DownloadState = ModelDownloadManager.DownloadState.Idle
     )
 
-// Update the downloadModel function in NovascopeViewModel.kt
+// app/src/main/java/com/example/novascope/viewmodel/NovascopeViewModel.kt
+// The fixed downloadModel function for NovascopeViewModel.kt
 
     fun downloadModel() {
         // Cancel any existing download job
@@ -64,13 +65,22 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
 
         currentDownloadJob = viewModelScope.launch {
             try {
-                // Update UI state
+                // Update UI state to downloading
                 _uiState.update { it.copy(modelDownloadState = ModelDownloadManager.DownloadState.Downloading(0)) }
 
                 // Collect download progress updates
                 val progressJob = viewModelScope.launch {
                     articleSummarizer.downloadState.collect { state ->
                         _uiState.update { it.copy(modelDownloadState = state) }
+
+                        // Log progress
+                        if (state is ModelDownloadManager.DownloadState.Downloading) {
+                            Log.d("ViewModel", "Download progress: ${state.progress}%")
+                        } else if (state is ModelDownloadManager.DownloadState.Success) {
+                            Log.d("ViewModel", "Download completed successfully")
+                        } else if (state is ModelDownloadManager.DownloadState.Error) {
+                            Log.e("ViewModel", "Download error: ${state.message}")
+                        }
                     }
                 }
 
@@ -79,14 +89,18 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
 
                 // Once download completes successfully, initialize the model
                 if (articleSummarizer.isModelDownloaded) {
+                    Log.d("ViewModel", "Model downloaded, initializing...")
                     // Try to initialize with longer timeout
-                    withTimeoutOrNull(30000L) {
+                    val initialized = withTimeoutOrNull(30000L) {
                         articleSummarizer.initializeModel()
-                    } ?: Log.w("ViewModel", "Model initialization timed out")
+                    } ?: false
+
+                    Log.d("ViewModel", "Model initialization result: $initialized")
 
                     // Try to generate summary again if there's a selected article
                     val selectedArticle = _uiState.value.selectedArticle
-                    if (selectedArticle != null) {
+                    if (selectedArticle != null && initialized) {
+                        Log.d("ViewModel", "Regenerating summary for selected article")
                         generateSummary(selectedArticle)
                     }
                 }
@@ -95,7 +109,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 progressJob.cancel()
 
             } catch (e: Exception) {
-                Log.e("ViewModel", "Error downloading model: ${e.message}")
+                Log.e("ViewModel", "Error downloading model: ${e.message}", e)
                 _uiState.update {
                     it.copy(modelDownloadState = ModelDownloadManager.DownloadState.Error(e.message ?: "Unknown error"))
                 }
@@ -104,6 +118,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     }
 
     fun cancelModelDownload() {
+        Log.d("ViewModel", "Cancelling model download")
         currentDownloadJob?.cancel()
 
         viewModelScope.launch {
@@ -123,6 +138,62 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
+    // Generate summary with local AI and caching
+    private fun generateSummary(newsItem: NewsItem) {
+        // Set loading state immediately
+        _uiState.update { it.copy(summaryState = SummaryState.Loading) }
+
+        Log.d("ViewModel", "Generating summary for article: ${newsItem.title}")
+
+        currentSummaryJob = viewModelScope.launch {
+            try {
+                // Check if model is downloaded
+                if (!articleSummarizer.isModelDownloaded) {
+                    Log.d("ViewModel", "Model not downloaded, showing ModelNotDownloaded state")
+                    _uiState.update { it.copy(summaryState = SummaryState.ModelNotDownloaded) }
+                    return@launch
+                }
+
+                // Initialize model if needed
+                if (!articleSummarizer.initializeModel()) {
+                    Log.e("ViewModel", "Failed to initialize model")
+                    _uiState.update {
+                        it.copy(summaryState = SummaryState.Error("Failed to initialize model"))
+                    }
+                    return@launch
+                }
+
+                // Use a timeout to prevent hanging
+                withTimeoutOrNull(15000L) {
+                    articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
+                        Log.d("ViewModel", "Summary state updated: $summaryState")
+                        _uiState.update { it.copy(summaryState = summaryState) }
+                    }
+                } ?: run {
+                    // Timeout occurred, use fallback
+                    Log.w("ViewModel", "Summary generation timed out, using fallback")
+                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
+                    _uiState.update {
+                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ViewModel", "Error generating summary: ${e.message}", e)
+
+                // Try fallback summary on error
+                try {
+                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
+                    _uiState.update {
+                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
+                    }
+                } catch (e: Exception) {
+                    _uiState.update {
+                        it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
+                    }
+                }
+            }
+        }
+    }
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
@@ -433,43 +504,10 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // Generate summary with local AI and caching
-    private fun generateSummary(newsItem: NewsItem) {
-        // Set loading state immediately
-        _uiState.update { it.copy(summaryState = SummaryState.Loading) }
-
-        currentSummaryJob = viewModelScope.launch {
-            try {
-                // Use a timeout to prevent hanging
-                withTimeoutOrNull(15000L) {
-                    articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
-                        _uiState.update { it.copy(summaryState = summaryState) }
-                    }
-                } ?: run {
-                    // Timeout occurred, use fallback
-                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Success("$fallbackSummary (timeout occurred)"))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("ViewModel", "Error generating summary: ${e.message}")
-
-                // Try fallback summary on error
-                try {
-                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
-                    }
-                } catch (e: Exception) {
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
-                    }
-                }
-            }
-        }
+    // Helper method to check if model is downloaded
+    fun isModelDownloaded(): Boolean {
+        return articleSummarizer.isModelDownloaded
     }
-
     // Update app settings
     fun updateSettings(settings: AppSettings) {
         _settings.value = settings

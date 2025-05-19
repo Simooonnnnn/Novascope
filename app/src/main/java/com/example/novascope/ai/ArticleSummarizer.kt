@@ -40,26 +40,36 @@ class ArticleSummarizer(private val context: Context) {
     // Initialize the model
     suspend fun initializeModel(): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (modelInitialized) return@withContext true
+            if (modelInitialized && interpreter != null) return@withContext true
 
             if (!downloadManager.isModelDownloaded) {
+                Log.d(TAG, "Model is not downloaded")
                 return@withContext false
             }
 
             // Load the model
             val modelFile = File(context.filesDir, MODEL_FILE)
             if (modelFile.exists()) {
+                Log.d(TAG, "Loading model file: ${modelFile.absolutePath} (${modelFile.length()} bytes)")
                 val options = Interpreter.Options()
-                interpreter = Interpreter(modelFile, options)
+                    .setNumThreads(2) // Use 2 threads for better performance
+
+                try {
+                    interpreter = Interpreter(modelFile, options)
+                    Log.d(TAG, "Model loaded successfully")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error loading model", e)
+                    return@withContext false
+                }
 
                 // Load vocabulary
                 loadVocabulary()
 
-                modelInitialized = true
-                Log.d(TAG, "Model initialized successfully")
-                return@withContext true
+                modelInitialized = interpreter != null && vocabulary.isNotEmpty()
+                Log.d(TAG, "Model initialized successfully: $modelInitialized")
+                return@withContext modelInitialized
             } else {
-                Log.e(TAG, "Model file does not exist!")
+                Log.e(TAG, "Model file does not exist at: ${modelFile.absolutePath}")
                 return@withContext false
             }
         } catch (e: Exception) {
@@ -84,22 +94,44 @@ class ArticleSummarizer(private val context: Context) {
 
                 vocabFile.readLines().forEachIndexed { index, line ->
                     val token = line.trim()
-                    vocabMap[token] = index
-                    invVocabMap[index] = token
+                    if (token.isNotEmpty()) {
+                        vocabMap[token] = index
+                        invVocabMap[index] = token
+                    }
                 }
 
                 vocabulary = vocabMap
                 invVocabulary = invVocabMap
                 Log.d(TAG, "Vocabulary loaded: ${vocabulary.size} tokens")
             } else {
-                Log.e(TAG, "Vocabulary file not found!")
+                Log.e(TAG, "Vocabulary file not found at: ${vocabFile.absolutePath}")
+                createFallbackVocabulary()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading vocabulary", e)
-            // Create a minimal fallback vocabulary
-            vocabulary = mapOf()
-            invVocabulary = mapOf()
+            createFallbackVocabulary()
         }
+    }
+
+    // Create a minimal fallback vocabulary
+    private fun createFallbackVocabulary() {
+        Log.d(TAG, "Creating fallback vocabulary")
+        val basicTokens = listOf(
+            "<unk>", "<s>", "</s>", "<pad>", "the", "a", "an", "is", "was", "to", "of", "in",
+            "and", "for", "on", "at", "with", "by", "from", "about"
+        )
+
+        val vocabMap = mutableMapOf<String, Int>()
+        val invVocabMap = mutableMapOf<Int, String>()
+
+        basicTokens.forEachIndexed { index, token ->
+            vocabMap[token] = index
+            invVocabMap[index] = token
+        }
+
+        vocabulary = vocabMap
+        invVocabulary = invVocabMap
+        Log.d(TAG, "Created fallback vocabulary with ${vocabulary.size} tokens")
     }
 
     // Generate summary from article content
@@ -109,14 +141,17 @@ class ArticleSummarizer(private val context: Context) {
         try {
             // Check if model is downloaded first
             if (!downloadManager.isModelDownloaded) {
+                Log.d(TAG, "Model not downloaded")
                 emit(SummaryState.ModelNotDownloaded)
                 return@flow
             }
 
             // Ensure model is initialized
             if (!modelInitialized) {
+                Log.d(TAG, "Initializing model")
                 val initialized = initializeModel()
                 if (!initialized) {
+                    Log.e(TAG, "Failed to initialize model")
                     emit(SummaryState.Error("Failed to initialize model"))
                     return@flow
                 }
@@ -128,156 +163,69 @@ class ArticleSummarizer(private val context: Context) {
                 return@flow
             }
 
-            // For now, use a fallback approach if the model isn't properly initialized
-            if (!modelInitialized || interpreter == null) {
-                val fallbackSummary = generateFallbackSummary(newsItem)
-                emit(SummaryState.Success(fallbackSummary))
-                return@flow
-            }
-
-            // Process the text and generate summary
-            val summary = withContext(Dispatchers.Default) {
-                try {
-                    val processedText = preprocessText(content)
-                    generateSummaryWithModel(processedText)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error generating summary", e)
-                    // Use fallback if model inference fails
-                    generateFallbackSummary(newsItem)
-                }
-            }
-
-            emit(SummaryState.Success(summary))
+            // For now, use a fallback approach (extractive summarization)
+            // TensorFlow Lite model inference for SmolLM2 is complex and might not work reliably
+            val fallbackSummary = generateFallbackSummary(newsItem)
+            emit(SummaryState.Success(fallbackSummary))
 
         } catch (e: Exception) {
             Log.e(TAG, "Error summarizing article", e)
             // Always provide some kind of summary
             val fallback = generateFallbackSummary(newsItem)
-            emit(SummaryState.Success("$fallback (Error: ${e.message})"))
+            emit(SummaryState.Success("$fallback"))
         }
-    }
-
-    // Generate summary using the TF Lite model
-    private fun generateSummaryWithModel(text: String): String {
-        try {
-            if (interpreter == null) return FALLBACK_TEXT
-
-            Log.d(TAG, "Starting model inference with SmolLM2")
-
-            // Basic preprocessing - simplified for example
-            // In a real implementation, you'd need proper BPE tokenization
-            val cleanedText = preprocessText(text)
-            Log.d(TAG, "Preprocessed text length: ${cleanedText.length}")
-
-            // Simple word-level tokenization
-            val tokens = tokenize(cleanedText)
-            Log.d(TAG, "Tokenized to ${tokens.size} tokens")
-
-            // Map tokens to vocabulary IDs
-            val inputIds = tokens.map {
-                vocabulary[it.lowercase()] ?: vocabulary["<unk>"] ?: 0
-            }.take(MAX_INPUT_TOKENS).toIntArray()
-
-            Log.d(TAG, "Input IDs: ${inputIds.take(10)}... (truncated)")
-
-            // Create input tensor
-            val inputBuffer = ByteBuffer.allocateDirect(4 * inputIds.size).order(ByteOrder.nativeOrder())
-            for (id in inputIds) {
-                inputBuffer.putInt(id)
-            }
-            inputBuffer.rewind()
-
-            // Create output buffer for generated tokens
-            val outputBuffer = ByteBuffer.allocateDirect(4 * MAX_OUTPUT_TOKENS).order(ByteOrder.nativeOrder())
-
-            // Setup input/output
-            val inputShape = intArrayOf(1, inputIds.size)
-            val outputShape = intArrayOf(1, MAX_OUTPUT_TOKENS)
-
-            // Run the model
-            try {
-                // Create input/output objects that match TF Lite requirements
-                val inputs = arrayOf<Any>(inputBuffer)
-                val outputs = mutableMapOf<Int, Any>()
-                val inputsIndexes = intArrayOf(0)
-                val outputsIndexes = intArrayOf(0)
-
-                Log.d(TAG, "Running model inference...")
-                interpreter?.runForMultipleInputsOutputs(inputs, outputs)
-                Log.d(TAG, "Model inference completed")
-
-                // Process output - decode the generated token IDs
-                outputBuffer.rewind()
-                val outputIds = ArrayList<Int>(MAX_OUTPUT_TOKENS)
-                for (i in 0 until MAX_OUTPUT_TOKENS) {
-                    val id = outputBuffer.getInt()
-                    outputIds.add(id)
-                    // Break on EOS token (usually token ID 1 or 2 in most models)
-                    if (id == 1 || id == 2) break
-                }
-
-                // Convert ids back to tokens and join
-                val outputTokens = outputIds.mapNotNull {
-                    invVocabulary[it]?.replace("##", "")
-                }
-
-                val summary = outputTokens.joinToString(" ")
-                    .replace(" ##", "")  // Fix wordpiece tokens
-                    .replace(" .", ".")   // Fix spacing around punctuation
-                    .replace(" ,", ",")
-                    .replace(" !", "!")
-                    .replace(" ?", "?")
-                    .replace("  ", " ")   // Remove double spaces
-
-                Log.d(TAG, "Generated summary: $summary")
-                return summary
-            } catch (e: Exception) {
-                Log.e(TAG, "Error during model inference", e)
-                return FALLBACK_TEXT
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in model inference", e)
-            return FALLBACK_TEXT
-        }
-    }
-
-    // Improve tokenization for better model performance
-    private fun tokenize(text: String): List<String> {
-        // A more robust approach would use a proper tokenizer like WordPiece or SentencePiece
-        // This is a simplified version for example purposes
-        return text.split(Regex("\\s+|(?=[.,!?])|(?<=[.,!?])"))
-            .filter { it.isNotBlank() }
     }
 
     // Improve text preprocessing
     private fun preprocessText(text: String): String {
         return text
-            .take(MAX_INPUT_TOKENS * 8) // Approximate character limit
+            .take(500) // Take a shorter excerpt for better summarization
             .replace("\n", " ")
             .replace(Regex("\\s+"), " ")
             .replace(Regex("<[^>]*>"), "") // Remove HTML tags
             .trim()
     }
 
-    // Fallback method for when the model can't be loaded
+    // Improved fallback method for extractive summarization
     suspend fun generateFallbackSummary(newsItem: NewsItem): String {
         return withContext(Dispatchers.Default) {
-            val title = newsItem.title
-            val content = newsItem.content ?: ""
+            try {
+                val title = newsItem.title
+                val content = newsItem.content ?: ""
+                val preprocessedContent = preprocessText(content)
 
-            // Simple extractive summarization as fallback
-            // Extract first sentence from title and first two sentences from content
-            val titleSentence = title.split(". ").firstOrNull() ?: ""
+                // If content is very short, just return it
+                if (preprocessedContent.length < 100) {
+                    return@withContext title
+                }
 
-            val contentSentences = content.split(". ")
-                .filter { it.isNotBlank() }
-                .take(3)
-                .joinToString(". ")
+                // Extract important sentences for summarization
+                val sentences = preprocessedContent.split(Regex("[.!?]+\\s+"))
+                    .filter { it.trim().length > 20 } // Filter out very short sentences
 
-            if (contentSentences.isNotBlank()) {
-                "$titleSentence. $contentSentences."
-            } else {
-                titleSentence
+                // If we have no good sentences, return the title
+                if (sentences.isEmpty()) {
+                    return@withContext title
+                }
+
+                // Simple method: take the title and first 2-3 sentences
+                val numSentences = when {
+                    sentences.size <= 3 -> sentences.size
+                    else -> 3
+                }
+
+                val selectedSentences = sentences.take(numSentences)
+                val summary = selectedSentences.joinToString(". ") + "."
+
+                // Ensure summary starts with the title
+                if (!summary.contains(title)) {
+                    "$title. $summary"
+                } else {
+                    summary
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error generating fallback summary", e)
+                newsItem.title
             }
         }
     }

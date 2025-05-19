@@ -35,6 +35,10 @@ import com.example.novascope.ui.components.AiSummaryCard
 import com.example.novascope.viewmodel.NovascopeViewModel
 import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
+import com.example.novascope.ai.ModelDownloadManager
+import com.example.novascope.ui.components.AiSummaryCardInArticleDetail
+import com.example.novascope.ui.components.ModelDownloadDialog
+
 
 private const val TAG = "ArticleDetailScreen"
 
@@ -149,6 +153,17 @@ fun ArticleDetailScreen(
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+// Use this to track if showing the summary or download dialog
+    var showSummaryDownloadDialog by remember { mutableStateOf(false) }
+
+    if (showSummaryDownloadDialog) {
+        ModelDownloadDialog(
+            downloadState = uiState.modelDownloadState,
+            onDownloadClick = { viewModel.downloadModel() },
+            onCancelDownload = { viewModel.cancelModelDownload() },
+            onDismiss = { showSummaryDownloadDialog = false }
+        )
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -225,12 +240,17 @@ fun ArticleDetailScreen(
                 ArticleHeaderImage(article)
             }
 
-            // AI Summary Card (if enabled)
+// AI Summary Card (if enabled)
             if (showSummary) {
                 item {
-                    AiSummaryCard(
+                    AiSummaryCardInArticleDetail(
                         summaryState = summaryState,
                         onRetry = { viewModel.selectArticle(article.id) },
+                        onDownloadClick = {
+                            showSummaryDownloadDialog = true
+                            viewModel.downloadModel()
+                        },
+                        isModelDownloaded = viewModel.isModelDownloaded(),
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
