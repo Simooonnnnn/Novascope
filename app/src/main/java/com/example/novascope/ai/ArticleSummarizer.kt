@@ -72,21 +72,37 @@ class ArticleSummarizer(private val context: Context) {
     }
 
     // Download and prepare model files
+// Updates to ArticleSummarizer.kt
+
+    // Inside the prepareModelFiles function
     private suspend fun prepareModelFiles() = withContext(Dispatchers.IO) {
         try {
+            // Create the assets directory in the app's files directory if it doesn't exist
+            val assetsDir = File(context.filesDir, "assets")
+            if (!assetsDir.exists()) {
+                assetsDir.mkdirs()
+            }
+
             // Download model if needed
             val modelFile = File(context.filesDir, MODEL_FILE)
             if (!modelFile.exists()) {
                 try {
-                    URL(MODEL_URL).openStream().use { inputStream ->
-                        FileOutputStream(modelFile).use { outputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                    }
+                    // Use a more robust download method with progress tracking
+                    downloadFile(MODEL_URL, modelFile, "Downloading model...")
                     Log.d(TAG, "Model downloaded successfully")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to download model: ${e.message}")
-                    // Continue and see if we can use a fallback or bundled model
+                    // Try to use the bundled model from assets as fallback
+                    try {
+                        context.assets.open(MODEL_FILE).use { input ->
+                            FileOutputStream(modelFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        Log.d(TAG, "Using bundled model from assets")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to extract bundled model: ${e.message}")
+                    }
                 }
             }
 
@@ -94,14 +110,21 @@ class ArticleSummarizer(private val context: Context) {
             val vocabFile = File(context.filesDir, VOCAB_FILE)
             if (!vocabFile.exists()) {
                 try {
-                    URL(VOCAB_URL).openStream().use { inputStream ->
-                        FileOutputStream(vocabFile).use { outputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                    }
+                    downloadFile(VOCAB_URL, vocabFile, "Downloading vocabulary...")
                     Log.d(TAG, "Vocabulary downloaded successfully")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to download vocabulary: ${e.message}")
+                    // Try to use the bundled vocabulary from assets as fallback
+                    try {
+                        context.assets.open(VOCAB_FILE).use { input ->
+                            FileOutputStream(vocabFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        Log.d(TAG, "Using bundled vocabulary from assets")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to extract bundled vocabulary: ${e.message}")
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -109,6 +132,37 @@ class ArticleSummarizer(private val context: Context) {
         }
     }
 
+    // Add a helper function for downloading files with progress tracking
+    private suspend fun downloadFile(url: String, destination: File, progressMessage: String) = withContext(Dispatchers.IO) {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.connectTimeout = 15000
+        connection.readTimeout = 15000
+
+        val contentLength = connection.contentLength
+
+        connection.inputStream.use { input ->
+            FileOutputStream(destination).use { output ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                var totalBytesRead = 0L
+                var lastProgressUpdate = 0L
+
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    output.write(buffer, 0, bytesRead)
+                    totalBytesRead += bytesRead
+
+                    // Update progress approximately every 5%
+                    if (contentLength > 0) {
+                        val progress = (totalBytesRead * 100 / contentLength)
+                        if (progress % 5 == 0L && progress != lastProgressUpdate) {
+                            lastProgressUpdate = progress
+                            Log.d(TAG, "$progressMessage $progress%")
+                        }
+                    }
+                }
+            }
+        }
+    }
     // Load vocabulary from file
     private suspend fun loadVocabulary() = withContext(Dispatchers.IO) {
         try {
@@ -189,63 +243,107 @@ class ArticleSummarizer(private val context: Context) {
     }
 
     // Generate summary using the TF Lite model
+// Updates to ArticleSummarizer.kt
+
+    // Improve the generateSummaryWithModel function
     private fun generateSummaryWithModel(text: String): String {
-        // This is a simplified implementation - in a real app, you'd need proper tokenization and processing
         try {
             if (interpreter == null) return FALLBACK_TEXT
 
-            // Tokenize input text
-            val tokens = tokenize(text)
-            val inputIds = tokens.map { vocabulary[it] ?: 0 }.take(MAX_INPUT_TOKENS).toIntArray()
+            Log.d(TAG, "Starting model inference with SmolLM2")
 
-            // Prepare input and output tensors
-            val inputBuffer = ByteBuffer.allocateDirect(4 * inputIds.size)
+            // Basic preprocessing - simplified for example
+            // In a real implementation, you'd need proper BPE tokenization
+            val cleanedText = preprocessText(text)
+            Log.d(TAG, "Preprocessed text length: ${cleanedText.length}")
+
+            // Simple word-level tokenization
+            val tokens = tokenize(cleanedText)
+            Log.d(TAG, "Tokenized to ${tokens.size} tokens")
+
+            // Map tokens to vocabulary IDs
+            val inputIds = tokens.map {
+                vocabulary[it.lowercase()] ?: vocabulary["<unk>"] ?: 0
+            }.take(MAX_INPUT_TOKENS).toIntArray()
+
+            Log.d(TAG, "Input IDs: ${inputIds.take(10)}... (truncated)")
+
+            // Create input tensor
+            val inputBuffer = ByteBuffer.allocateDirect(4 * inputIds.size).order(java.nio.ByteOrder.nativeOrder())
             for (id in inputIds) {
                 inputBuffer.putInt(id)
             }
             inputBuffer.rewind()
 
-            // Create output buffer for the generated tokens
-            val outputBuffer = ByteBuffer.allocateDirect(4 * MAX_OUTPUT_TOKENS)
+            // Create output buffer for generated tokens
+            val outputBuffer = ByteBuffer.allocateDirect(4 * MAX_OUTPUT_TOKENS).order(java.nio.ByteOrder.nativeOrder())
 
-            // Run inference
-            val inputs = arrayOf(inputBuffer)
-            val outputs = mapOf(0 to outputBuffer)
+            // Setup input/output
+            val inputShape = intArrayOf(1, inputIds.size)
+            val outputShape = intArrayOf(1, MAX_OUTPUT_TOKENS)
 
-            interpreter?.runForMultipleInputsOutputs(inputs, outputs)
+            // Run the model
+            try {
+                val inputs = mapOf(0 to inputBuffer)
+                val outputs = mapOf(0 to outputBuffer)
 
-            // Process output
-            outputBuffer.rewind()
-            val outputIds = ArrayList<Int>(MAX_OUTPUT_TOKENS)
-            for (i in 0 until MAX_OUTPUT_TOKENS) {
-                val id = outputBuffer.getInt()
-                outputIds.add(id)
-                // Break on EOS token if present
-                if (id == 1) break
+                Log.d(TAG, "Running model inference...")
+                interpreter?.runForMultipleInputsOutputs(inputs, outputs)
+                Log.d(TAG, "Model inference completed")
+
+                // Process output - decode the generated token IDs
+                outputBuffer.rewind()
+                val outputIds = ArrayList<Int>(MAX_OUTPUT_TOKENS)
+                for (i in 0 until MAX_OUTPUT_TOKENS) {
+                    val id = outputBuffer.getInt()
+                    outputIds.add(id)
+                    // Break on EOS token (usually token ID 1 or 2 in most models)
+                    if (id == 1 || id == 2) break
+                }
+
+                // Convert ids back to tokens and join
+                val outputTokens = outputIds.mapNotNull {
+                    invVocabulary[it]?.replace("##", "")
+                }
+
+                val summary = outputTokens.joinToString(" ")
+                    .replace(" ##", "")  // Fix wordpiece tokens
+                    .replace(" .", ".")   // Fix spacing around punctuation
+                    .replace(" ,", ",")
+                    .replace(" !", "!")
+                    .replace(" ?", "?")
+                    .replace("  ", " ")   // Remove double spaces
+
+                Log.d(TAG, "Generated summary: $summary")
+                return summary
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during model inference", e)
+                return FALLBACK_TEXT
             }
-
-            // Convert ids back to tokens and join
-            val outputTokens = outputIds.mapNotNull { invVocabulary[it] }
-            return outputTokens.joinToString(" ")
         } catch (e: Exception) {
             Log.e(TAG, "Error in model inference", e)
             return FALLBACK_TEXT
         }
     }
 
-    // Basic tokenization for text
+    // Improve tokenization for better model performance
     private fun tokenize(text: String): List<String> {
-        // Simple whitespace tokenization - in a real app, you'd use a proper BPE tokenizer
-        return text.split(Regex("\\s+"))
+        // A more robust approach would use a proper tokenizer like WordPiece or SentencePiece
+        // This is a simplified version for example purposes
+        return text.split(Regex("\\s+|(?=[.,!?])|(?<=[.,!?])"))
+            .filter { it.isNotBlank() }
     }
 
-    // Preprocess text for the model
+    // Improve text preprocessing
     private fun preprocessText(text: String): String {
-        // Clean and prepare text for the model
-        return text.take(MAX_INPUT_TOKENS * 4) // Approximate character limit
-            .replace("\\s+".toRegex(), " ")
+        return text
+            .take(MAX_INPUT_TOKENS * 8) // Approximate character limit
+            .replace("\n", " ")
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("<[^>]*>"), "") // Remove HTML tags
             .trim()
     }
+
 
     // Fallback method for when the model can't be loaded
     suspend fun generateFallbackSummary(newsItem: NewsItem): String {

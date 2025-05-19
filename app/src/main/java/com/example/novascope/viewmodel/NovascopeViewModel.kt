@@ -343,7 +343,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
             Log.d("NovascopeViewModel", "Article found: ${article.title}")
             Log.d("NovascopeViewModel", "Article content length: ${article.content?.length ?: 0}")
 
-            // Generate AI summary if feature is enabled
+            // Only generate the summary if the feature is enabled
             if (_settings.value.enableAiSummary) {
                 generateSummary(article)
             }
@@ -351,56 +351,52 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
             // Better error handling when article not found
             Log.e("NovascopeViewModel", "Article not found: $articleId")
 
-            // Set error state and clear selected article
+            // Set error state
             _uiState.update {
                 it.copy(
                     summaryState = SummaryState.Error("Article not found"),
-                    // Important: Set selected article to null to prevent accessing non-existent data
                     selectedArticle = null
                 )
             }
-
-            // Try to reload feeds in case the article data is stale
-            if (!isLoadingFeeds.get()) {
-                loadFeeds(false)
-            }
-        }
-    }    // Generate summary with local AI and caching
-    private fun generateSummary(newsItem: NewsItem) {
-        // Set loading state immediately
-        _uiState.update { it.copy(summaryState = SummaryState.Loading) }
-
-        currentSummaryJob = viewModelScope.launch {
-            try {
-                // Set timeout to prevent hanging if model is slow
-                withTimeoutOrNull(10000L) {
-                    articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
-                        _uiState.update { it.copy(summaryState = summaryState) }
-                    }
-                } ?: run {
-                    // Timeout occurred, use fallback
-                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("ViewModel", "Error generating summary: ${e.message}")
-
-                // Try fallback summary on error
-                try {
-                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
-                    }
-                } catch (e: Exception) {
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
-                    }
-                }
-            }
         }
     }
+
+        // Generate summary with local AI and caching
+        private fun generateSummary(newsItem: NewsItem) {
+            // Set loading state immediately
+            _uiState.update { it.copy(summaryState = SummaryState.Loading) }
+
+            currentSummaryJob = viewModelScope.launch {
+                try {
+                    // Use a timeout to prevent hanging
+                    withTimeoutOrNull(15000L) {
+                        articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
+                            _uiState.update { it.copy(summaryState = summaryState) }
+                        }
+                    } ?: run {
+                        // Timeout occurred, use fallback
+                        val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
+                        _uiState.update {
+                            it.copy(summaryState = SummaryState.Success("$fallbackSummary (timeout occurred)"))
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("ViewModel", "Error generating summary: ${e.message}")
+
+                    // Try fallback summary on error
+                    try {
+                        val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
+                        _uiState.update {
+                            it.copy(summaryState = SummaryState.Success(fallbackSummary))
+                        }
+                    } catch (e: Exception) {
+                        _uiState.update {
+                            it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
+                        }
+                    }
+                }
+            }
+        }
 
     // Update app settings
     fun updateSettings(settings: AppSettings) {

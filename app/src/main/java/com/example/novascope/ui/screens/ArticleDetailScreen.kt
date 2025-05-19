@@ -112,7 +112,7 @@ fun ArticleDetailScreen(
     val summaryState = uiState.summaryState
 
     // UI state
-    var showSummary by remember { mutableStateOf(true) }
+    var showSummaryDialog by remember { mutableStateOf(false) }
     val isBookmarked = remember(article.id, uiState.bookmarkedItems) {
         uiState.bookmarkedItems.any { it.id == article.id }
     }
@@ -162,15 +162,23 @@ fun ArticleDetailScreen(
                     }
                 },
                 actions = {
-                    // AI summary toggle
-                    IconButton(onClick = { showSummary = !showSummary }) {
+// AI summary toggle button
+                    IconButton(
+                        onClick = {
+                            // Toggle showSummaryDialog instead of showSummary
+                            showSummaryDialog = !showSummaryDialog
+                            if (showSummaryDialog && summaryState !is SummaryState.Loading && summaryState !is SummaryState.Success) {
+                                // Only generate if not already generated or loading
+                                viewModel.selectArticle(article.id)
+                            }
+                        }
+                    ) {
                         Icon(
-                            imageVector = Icons.Rounded.Psychology,
-                            contentDescription = if (showSummary) "Hide Summary" else "Show Summary",
-                            tint = if (showSummary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            imageVector = Icons.Filled.Psychology,
+                            contentDescription = "Show AI Summary",
+                            tint = if (showSummaryDialog) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
-
                     // Bookmark button
                     IconButton(onClick = { viewModel.toggleBookmark(article.id) }) {
                         Icon(
@@ -221,17 +229,6 @@ fun ArticleDetailScreen(
             // Image Header
             item {
                 ArticleHeaderImage(article)
-            }
-
-            // AI Summary Card (if enabled)
-            if (showSummary) {
-                item {
-                    AiSummaryCard(
-                        summaryState = summaryState,
-                        onRetry = { viewModel.selectArticle(article.id) },
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
             }
 
             // Article Content
@@ -294,6 +291,14 @@ fun ArticleDetailScreen(
             }
         }
     }
+    if (showSummaryDialog) {
+        SummaryDialog(
+            summaryState = summaryState,
+            onRetry = { viewModel.selectArticle(article.id) },
+            onDismiss = { showSummaryDialog = false }
+        )
+    }
+
 }
 
 // Helper function to clean HTML content
