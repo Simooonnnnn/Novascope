@@ -8,8 +8,6 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,7 +25,8 @@ fun LargeNewsCard(
     onCardClick: (NewsItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isBookmarked by remember { mutableStateOf(newsItem.isBookmarked) }
+    // Derive from newsItem to avoid unnecessary recompositions
+    var isBookmarked by remember(newsItem.id) { mutableStateOf(newsItem.isBookmarked) }
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -43,16 +42,18 @@ fun LargeNewsCard(
         )
     ) {
         Column {
-            // Article image
+            // Article image - only load if available
             newsItem.imageUrl?.let { url ->
-                AsyncImage(
-                    model = url,
-                    contentDescription = "Article image",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp),
-                    contentScale = ContentScale.Crop
-                )
+                Box(
+                    modifier = Modifier.height(180.dp)
+                ) {
+                    AsyncImage(
+                        model = url,
+                        contentDescription = "Article image",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
             }
 
             Column(modifier = Modifier.padding(16.dp)) {
@@ -103,15 +104,18 @@ fun LargeNewsCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    // Optimize the bookmark button
+                    val iconButtonModifier = Modifier.size(36.dp)
                     IconButton(
                         onClick = {
                             isBookmarked = !isBookmarked
                             onBookmarkClick(newsItem.copy(isBookmarked = !isBookmarked))
                         },
-                        modifier = Modifier.size(36.dp)
+                        modifier = iconButtonModifier
                     ) {
+                        val icon = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder
                         Icon(
-                            imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                            imageVector = icon,
                             contentDescription = "Bookmark",
                             tint = MaterialTheme.colorScheme.primary
                         )
@@ -130,7 +134,8 @@ fun SmallNewsCard(
     onCardClick: (NewsItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isBookmarked by remember { mutableStateOf(newsItem.isBookmarked) }
+    // Derive from newsItem to avoid unnecessary recompositions
+    var isBookmarked by remember(newsItem.id) { mutableStateOf(newsItem.isBookmarked) }
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -145,7 +150,7 @@ fun SmallNewsCard(
             pressedElevation = 1.dp
         )
     ) {
-        Column( // Change from Row to Column to stack content vertically
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
@@ -188,23 +193,27 @@ fun SmallNewsCard(
                     )
                 }
 
-                // Article thumbnail
+                // Article thumbnail - only load if available
                 newsItem.imageUrl?.let { url ->
                     Spacer(modifier = Modifier.width(16.dp))
-                    AsyncImage(
-                        model = url,
-                        contentDescription = "Article thumbnail",
+                    Box(
                         modifier = Modifier
                             .size(100.dp)
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop
-                    )
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        AsyncImage(
+                            model = url,
+                            contentDescription = "Article thumbnail",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp)) // Add space between the content row and the bottom row
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Bottom row with time and bookmark - now outside the content column
+            // Bottom row with time and bookmark
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -223,8 +232,9 @@ fun SmallNewsCard(
                     },
                     modifier = Modifier.size(36.dp)
                 ) {
+                    val icon = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder
                     Icon(
-                        imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        imageVector = icon,
                         contentDescription = "Bookmark",
                         tint = MaterialTheme.colorScheme.primary
                     )

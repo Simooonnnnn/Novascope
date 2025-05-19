@@ -43,7 +43,7 @@ fun ExploreScreen(
     var selectedCategory by remember { mutableStateOf<FeedCategory?>(null) }
     var showAddFeedDialog by remember { mutableStateOf(false) }
 
-    // We derive these states rather than adding new state variables
+    // Derived state for filtered feeds - only recalculated when inputs change
     val displayFeeds = remember(feeds, selectedCategory, searchQuery) {
         feeds.filter { feed ->
             (selectedCategory == null || feed.category == selectedCategory) &&
@@ -52,6 +52,7 @@ fun ExploreScreen(
         }
     }
 
+    // Derived values instead of additional state variables
     val isSearching = searchQuery.isNotEmpty()
     val isEmpty = displayFeeds.isEmpty()
 
@@ -110,8 +111,11 @@ fun ExploreScreen(
                     )
                 }
 
-                // Feed categories
-                items(FeedCategory.values()) { category ->
+                // Feed categories - use efficient key-based rendering
+                items(
+                    items = FeedCategory.values(),
+                    key = { it.name }
+                ) { category ->
                     FilterChip(
                         selected = category == selectedCategory,
                         onClick = { selectedCategory = if (category == selectedCategory) null else category },
@@ -169,7 +173,7 @@ private fun FeedsList(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
+        item(key = "header") {
             Text(
                 text = "Your Feeds (${feeds.size})",
                 style = MaterialTheme.typography.titleMedium,
@@ -182,14 +186,16 @@ private fun FeedsList(
             items = feeds,
             key = { it.id }
         ) { feed ->
-            FeedItem(
-                feed = feed,
-                onToggleEnabled = onToggleEnabled,
-                onDelete = onDelete
-            )
+            key(feed.id) {  // Additional key for better recomposition control
+                FeedItem(
+                    feed = feed,
+                    onToggleEnabled = onToggleEnabled,
+                    onDelete = onDelete
+                )
+            }
         }
 
-        item {
+        item(key = "footer") {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { /* Add feed handled by dialog */ },
@@ -229,7 +235,7 @@ fun FeedItem(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Feed icon
+            // Feed icon - use more efficient AsyncImage with crossfade
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -243,6 +249,7 @@ fun FeedItem(
                             .data(feed.iconUrl)
                             .crossfade(true)
                             .size(72, 72)
+                            .placeholder(androidx.core.R.drawable.notification_bg)
                             .build(),
                         contentDescription = "Feed icon",
                         modifier = Modifier.fillMaxSize(),

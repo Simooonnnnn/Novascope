@@ -175,6 +175,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     }
 
     // Load all feeds with optimized parallel loading
+// Partial optimization for loadFeeds method in NovascopeViewModel.kt
     fun loadFeeds(forceRefresh: Boolean = false) {
         // Cancel any existing load job
         currentLoadJob?.cancel()
@@ -186,12 +187,11 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
 
         currentLoadJob = viewModelScope.launch {
             try {
-                // Update loading state
+                // Update loading state only - separate update to reduce composition passes
                 _uiState.update {
                     it.copy(
                         isRefreshing = forceRefresh,
-                        isLoading = !forceRefresh,
-                        errorMessage = null
+                        isLoading = !forceRefresh
                     )
                 }
 
@@ -209,30 +209,30 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                             isLoading = false,
                             isRefreshing = false,
                             newsItems = emptyList(),
-                            bookmarkedItems = emptyList()
+                            bookmarkedItems = emptyList(),
+                            errorMessage = null
                         )
                     }
                     return@launch
                 }
 
-                // Process feeds in parallel
-                val deferredItems = enabledFeeds.map { feed ->
-                    async(Dispatchers.IO) {
-                        try {
-                            val items = rssService.fetchFeed(feed.url, forceRefresh)
-                            // Add the feed ID to each item for tracking
-                            items.map { it.copy(feedId = feed.id) }
-                        } catch (e: Exception) {
-                            Log.e("ViewModel", "Error loading feed ${feed.name}: ${e.message}")
-                            emptyList()
+                // Process feeds in parallel with improved error handling
+                val results = withContext(Dispatchers.IO) {
+                    enabledFeeds.map { feed ->
+                        async {
+                            try {
+                                val items = rssService.fetchFeed(feed.url, forceRefresh)
+                                // Add the feed ID to each item for tracking
+                                items.map { it.copy(feedId = feed.id) }
+                            } catch (e: Exception) {
+                                Log.e("ViewModel", "Error loading feed ${feed.name}: ${e.message}")
+                                emptyList()
+                            }
                         }
-                    }
+                    }.awaitAll().flatten()
                 }
 
-                // Await all results
-                val results = deferredItems.awaitAll().flatten()
-
-                // Process results efficiently
+                // Process results efficiently with a single state update
                 processNewsItems(results)
 
             } catch (e: Exception) {
@@ -251,37 +251,41 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     }
 
     private fun processNewsItems(newItems: List<NewsItem>) {
-        // Preserve bookmarks and update cache
-        val processedItems = newItems.map { item ->
+        // Perform all processing in one pass for better efficiency
+        val processedItems = ArrayList<NewsItem>(newItems.size)
+        val bookmarkedItems = ArrayList<NewsItem>()
+
+        newItems.forEachIndexed { index, item ->
             val existingItem = articlesCache[item.id]
-            val updatedItem = if (existingItem?.isBookmarked == true) {
-                item.copy(isBookmarked = true)
-            } else {
-                item
-            }
+            val isBookmarked = existingItem?.isBookmarked == true
+
+            // Create updated item with bookmarked status and big article flag
+            val updatedItem = item.copy(
+                isBookmarked = isBookmarked,
+                isBigArticle = index == 0 && processedItems.isEmpty()
+            )
+
+            // Update cache
             articlesCache[item.id] = updatedItem
-            updatedItem
+
+            // Add to processed items
+            processedItems.add(updatedItem)
+
+            // Add to bookmarked items if bookmarked
+            if (isBookmarked) {
+                bookmarkedItems.add(updatedItem)
+            }
         }
 
-        // Sort by publish time
+        // Sort once by publish time for better performance
         val sortedItems = processedItems.sortedByDescending { it.publishTimeMillis }
 
-        // Mark first item as big article
-        val displayItems = if (sortedItems.isNotEmpty()) {
-            listOf(sortedItems.first().copy(isBigArticle = true)) +
-                    sortedItems.drop(1).map { it.copy(isBigArticle = false) }
-        } else {
-            sortedItems
-        }
-
-        // Update bookmarked items list and main state
-        val bookmarkedItems = displayItems.filter { it.isBookmarked }
-
+        // Update state in a single pass
         _uiState.update {
             it.copy(
                 isLoading = false,
                 isRefreshing = false,
-                newsItems = displayItems,
+                newsItems = sortedItems,
                 bookmarkedItems = bookmarkedItems,
                 errorMessage = null
             )

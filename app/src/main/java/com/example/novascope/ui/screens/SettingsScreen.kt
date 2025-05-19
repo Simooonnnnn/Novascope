@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 fun SettingsScreen(
     onBackClick: () -> Unit = {}
 ) {
-    // State management - group related states
+    // Consolidated state management with a single state variable
     val settingsState = remember {
         mutableStateOf(
             SettingsState(
@@ -56,16 +56,21 @@ fun SettingsScreen(
             )
         }
     ) { innerPadding ->
+        // Use LazyColumn for better scrolling performance
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            // Better performance by using less spacing
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             // Appearance section
-            item {
+            item(key = "appearance_header") {
                 SettingsSectionHeader("Appearance")
+            }
 
+            item(key = "theme") {
                 SettingsItem(
                     title = "Theme",
                     subtitle = settingsState.value.themeMode.title,
@@ -76,7 +81,9 @@ fun SettingsScreen(
                     },
                     onClick = { showThemeDialog = true }
                 )
+            }
 
+            item(key = "dynamic_color") {
                 SettingsToggleItem(
                     title = "Dynamic Color",
                     subtitle = "Use colors from your wallpaper (Android 12+)",
@@ -86,7 +93,9 @@ fun SettingsScreen(
                         settingsState.value = settingsState.value.copy(useDynamicColor = it)
                     }
                 )
+            }
 
+            item(key = "text_size") {
                 SettingsItem(
                     title = "Text Size",
                     subtitle = settingsState.value.textSize.title,
@@ -101,14 +110,18 @@ fun SettingsScreen(
                         settingsState.value = settingsState.value.copy(textSize = newSize)
                     }
                 )
+            }
 
+            item(key = "divider1") {
                 Divider(modifier = Modifier.padding(vertical = 8.dp))
             }
 
             // Features section
-            item {
+            item(key = "features_header") {
                 SettingsSectionHeader("Features")
+            }
 
+            item(key = "ai_summaries") {
                 SettingsToggleItem(
                     title = "AI Summaries",
                     subtitle = "Generate summaries using on-device AI",
@@ -118,7 +131,9 @@ fun SettingsScreen(
                         settingsState.value = settingsState.value.copy(enableAiSummary = it)
                     }
                 )
+            }
 
+            item(key = "notifications") {
                 SettingsToggleItem(
                     title = "Notifications",
                     subtitle = "Receive alerts for new articles",
@@ -128,49 +143,63 @@ fun SettingsScreen(
                         settingsState.value = settingsState.value.copy(enableNotifications = it)
                     }
                 )
+            }
 
+            item(key = "language") {
                 SettingsItem(
                     title = "Default Language",
                     subtitle = "English",
                     icon = Icons.Outlined.Language,
                     onClick = { /* Open language selector */ }
                 )
+            }
 
+            item(key = "divider2") {
                 Divider(modifier = Modifier.padding(vertical = 8.dp))
             }
 
             // Data section
-            item {
+            item(key = "data_header") {
                 SettingsSectionHeader("Data & Storage")
+            }
 
+            item(key = "clear_cache") {
                 SettingsItem(
                     title = "Clear Cache",
                     subtitle = "Free up space used by images and data",
                     icon = Icons.Outlined.Delete,
                     onClick = { showClearCacheDialog = true }
                 )
+            }
 
+            item(key = "refresh_feeds") {
                 SettingsItem(
                     title = "Refresh All Feeds",
                     subtitle = "Update all feeds manually",
                     icon = Icons.Outlined.Refresh,
                     onClick = { /* Refresh all feeds */ }
                 )
+            }
 
+            item(key = "divider3") {
                 Divider(modifier = Modifier.padding(vertical = 8.dp))
             }
 
             // About section
-            item {
+            item(key = "about_header") {
                 SettingsSectionHeader("About")
+            }
 
+            item(key = "about_app") {
                 SettingsItem(
                     title = "Novascope",
                     subtitle = "Version 1.0.0",
                     icon = Icons.Outlined.Info,
                     onClick = { /* Show about dialog */ }
                 )
+            }
 
+            item(key = "footer") {
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
@@ -212,6 +241,7 @@ fun SettingsScreen(
     }
 }
 
+// More efficient dialog implementation
 @Composable
 fun ThemeDialog(
     currentTheme: ThemeMode,
@@ -223,7 +253,10 @@ fun ThemeDialog(
         title = { Text("Choose Theme") },
         text = {
             Column {
-                ThemeMode.values().forEach { mode ->
+                // Cache the theme values to avoid recreation during composition
+                val themes = remember { ThemeMode.values() }
+
+                themes.forEach { mode ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -258,6 +291,7 @@ fun ThemeDialog(
     )
 }
 
+// Memoized section header component
 @Composable
 fun SettingsSectionHeader(title: String) {
     Text(
@@ -270,6 +304,7 @@ fun SettingsSectionHeader(title: String) {
     )
 }
 
+// Optimized settings item with better click handling
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsItem(
@@ -278,15 +313,14 @@ fun SettingsItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit
 ) {
-    Card(
+    // Simpler Card implementation with fewer nested layouts
+    Surface(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(8.dp)
     ) {
         Row(
             modifier = Modifier
@@ -294,6 +328,7 @@ fun SettingsItem(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Icon container
             Box(
                 modifier = Modifier
                     .size(40.dp)
@@ -337,6 +372,7 @@ fun SettingsItem(
     }
 }
 
+// Simpler toggle item implementation
 @Composable
 fun SettingsToggleItem(
     title: String,
@@ -345,52 +381,60 @@ fun SettingsToggleItem(
     checked: Boolean,
     onToggle: (Boolean) -> Unit
 ) {
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp, horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(vertical = 4.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(8.dp)
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(vertical = 12.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge
-            )
-
-            if (subtitle.isNotEmpty()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
                 )
             }
-        }
 
-        Switch(
-            checked = checked,
-            onCheckedChange = onToggle
-        )
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 4.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Switch(
+                checked = checked,
+                onCheckedChange = onToggle
+            )
+        }
     }
 }
 

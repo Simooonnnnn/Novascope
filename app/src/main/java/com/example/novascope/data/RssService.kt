@@ -18,7 +18,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Service for fetching and parsing RSS feeds with optimized performance
+ * Optimized service for fetching and parsing RSS feeds
  */
 class RssService {
     private val rssParser = RssParser()
@@ -91,30 +91,38 @@ class RssService {
                 // Extract feed icon if available
                 val feedIcon = channel.image?.url
 
-                val items = channel.items.mapIndexedTo(ArrayList(channel.items.size)) { index, item ->
+                // Preallocate ArrayList with the correct capacity for better performance
+                val items = ArrayList<NewsItem>(channel.items.size)
+
+                // Process items more efficiently
+                channel.items.forEachIndexed { index, item ->
                     // Calculate publish time in millis for sorting
                     val publishDateMillis = parsePublishDate(item.pubDate ?: "")
 
-                    // Safely handle content
+                    // Safely handle content with early null checks for better performance
                     val content = when {
                         !item.content.isNullOrBlank() -> item.content
                         !item.description.isNullOrBlank() -> item.description
                         !item.title.isNullOrBlank() -> "No detailed content available for this article."
                         else -> "No content available"
                     }
-                    Log.d("RssService", "Content preview: ${content?.take(100)}")
 
                     // Make sure we have a valid title
                     val title = item.title?.takeIf { it.isNotBlank() } ?: "No title"
 
-                    // Generate a safe ID - using a simple approach with UUID
-                    // This avoids smart cast issues with external properties
-                    val safeId = UUID.randomUUID().toString()
+                    // Generate a deterministic ID from title and link for better caching
+                    val safeId = item.link?.let { "${item.title}_$it".hashCode().toString() }
+                        ?: UUID.randomUUID().toString()
 
-                    NewsItem(
+                    // Extract image efficiently
+                    val imageUrl = item.image ?: (content?.let {
+                        if (it.length < 5000) findImageInContent(it) else null
+                    })
+
+                    items.add(NewsItem(
                         id = safeId,
                         title = title,
-                        imageUrl = item.image ?: (content?.let { findImageInContent(it) }),
+                        imageUrl = imageUrl,
                         sourceIconUrl = feedIcon,
                         sourceName = channel.title ?: "Unknown Source",
                         publishTime = formatRelativeTime(publishDateMillis),
@@ -124,7 +132,7 @@ class RssService {
                         feedId = null,
                         isBookmarked = false,
                         isBigArticle = index == 0
-                    )
+                    ))
                 }
 
                 // Cache the results
@@ -152,22 +160,6 @@ class RssService {
         // Try to find an image tag using the pre-compiled regex
         val match = imgPattern.find(content)
         return match?.groupValues?.getOrNull(1)
-    }
-
-    private fun extractBestContent(item: com.prof18.rssparser.model.RssItem): String {
-        // Try to get the best available content
-        return when {
-            // Check for content:encoded which often has full content
-            item.content?.length ?: 0 > 100 -> item.content ?: ""
-            // RSS sometimes puts full content in description
-            item.description?.length ?: 0 > 100 -> item.description ?: ""
-            // If both are available but short, combine them
-            (!item.content.isNullOrBlank() && !item.description.isNullOrBlank()) ->
-                "${item.description}\n\n${item.content}"
-            !item.content.isNullOrBlank() -> item.content ?: ""
-            !item.description.isNullOrBlank() -> item.description ?: ""
-            else -> "No content available"
-        }
     }
 
     // Parse publish date into milliseconds with thread-safe date formatters
