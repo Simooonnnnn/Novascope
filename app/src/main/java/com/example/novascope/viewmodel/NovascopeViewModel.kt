@@ -2,12 +2,16 @@
 package com.example.novascope.viewmodel
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.novascope.ai.ArticleSummarizer
-import com.example.novascope.ai.ModelDownloadManager
+import com.example.novascope.ai.ModelFileManager
 import com.example.novascope.ai.SummaryState
 import com.example.novascope.data.FeedRepository
 import com.example.novascope.data.RssService
@@ -41,8 +45,10 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     private var currentLoadJob: Job? = null
     private var lifecycleObserver: LifecycleEventObserver? = null
     private var currentSummaryJob: Job? = null
-    private var currentDownloadJob: Job? = null // <--- Add this line
+    private var currentImportJob: Job? = null
 
+    // File picker
+    private var filePickerCallback: ((Uri) -> Unit)? = null
 
     // UI state with optimized updates
     data class UiState(
@@ -53,55 +59,83 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         val errorMessage: String? = null,
         val selectedArticle: NewsItem? = null,
         val summaryState: SummaryState = SummaryState.Loading,
-        val modelDownloadState: ModelDownloadManager.DownloadState = ModelDownloadManager.DownloadState.Idle
+        val modelImportState: ModelFileManager.ImportState = ModelFileManager.ImportState.Idle
     )
 
-// app/src/main/java/com/example/novascope/viewmodel/NovascopeViewModel.kt
-// The fixed downloadModel function for NovascopeViewModel.kt
+    // Register activity for file picking
+    private var activity: ComponentActivity? = null
+    private var modelFilePickerLauncher: ActivityResultLauncher<String>? = null
 
-    fun downloadModel() {
-        // Cancel any existing download job
-        currentDownloadJob?.cancel()
+    fun registerActivity(activity: ComponentActivity) {
+        this.activity = activity
 
-        currentDownloadJob = viewModelScope.launch {
+        // Initialize the file picker launcher
+        modelFilePickerLauncher = activity.registerForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri ->
+            uri?.let {
+                viewModelScope.launch {
+                    importModelFromUri(it)
+                }
+            }
+        }
+    }
+
+    fun unregisterActivity() {
+        this.activity = null
+        // The launcher will be automatically released when the activity is destroyed
+    }
+
+    fun launchModelFilePicker() {
+        modelFilePickerLauncher?.launch("*/*")
+    }
+
+    // Import model from URI
+    private suspend fun importModelFromUri(uri: Uri) {
+        // Cancel any existing import job
+        currentImportJob?.cancel()
+
+        currentImportJob = viewModelScope.launch {
             try {
-                // Update UI state to downloading
-                _uiState.update { it.copy(modelDownloadState = ModelDownloadManager.DownloadState.Downloading(0)) }
+                // Update UI state to importing
+                _uiState.update { it.copy(modelImportState = ModelFileManager.ImportState.Importing(0)) }
 
-                // Collect download progress updates
+                // Collect import progress updates
                 val progressJob = viewModelScope.launch {
-                    articleSummarizer.downloadState.collect { state ->
-                        _uiState.update { it.copy(modelDownloadState = state) }
+                    articleSummarizer.importState.collect { state ->
+                        _uiState.update { it.copy(modelImportState = state) }
 
                         // Log progress
-                        if (state is ModelDownloadManager.DownloadState.Downloading) {
-                            Log.d("ViewModel", "Download progress: ${state.progress}%")
-                        } else if (state is ModelDownloadManager.DownloadState.Success) {
-                            Log.d("ViewModel", "Download completed successfully")
-                        } else if (state is ModelDownloadManager.DownloadState.Error) {
-                            Log.e("ViewModel", "Download error: ${state.message}")
+                        if (state is ModelFileManager.ImportState.Importing) {
+                            Log.d("ViewModel", "Import progress: ${state.progress}%")
+                        } else if (state is ModelFileManager.ImportState.Success) {
+                            Log.d("ViewModel", "Import completed successfully")
+                        } else if (state is ModelFileManager.ImportState.Error) {
+                            Log.e("ViewModel", "Import error: ${state.message}")
                         }
                     }
                 }
 
-                // Start the download
-                articleSummarizer.downloadModel()
+                // Start the import
+                val importResult = articleSummarizer.importModel(uri)
 
-                // Once download completes successfully, initialize the model
-                if (articleSummarizer.isModelDownloaded) {
-                    Log.d("ViewModel", "Model downloaded, initializing...")
-                    // Try to initialize with longer timeout
-                    val initialized = withTimeoutOrNull(30000L) {
-                        articleSummarizer.initializeModel()
-                    } ?: false
+                if (importResult) {
+                    // Once import completes successfully, initialize the model
+                    if (articleSummarizer.isModelImported) {
+                        Log.d("ViewModel", "Model imported, initializing...")
+                        // Try to initialize with longer timeout
+                        val initialized = withTimeoutOrNull(30000L) {
+                            articleSummarizer.initializeModel()
+                        } ?: false
 
-                    Log.d("ViewModel", "Model initialization result: $initialized")
+                        Log.d("ViewModel", "Model initialization result: $initialized")
 
-                    // Try to generate summary again if there's a selected article
-                    val selectedArticle = _uiState.value.selectedArticle
-                    if (selectedArticle != null && initialized) {
-                        Log.d("ViewModel", "Regenerating summary for selected article")
-                        generateSummary(selectedArticle)
+                        // Try to generate summary again if there's a selected article
+                        val selectedArticle = _uiState.value.selectedArticle
+                        if (selectedArticle != null && initialized) {
+                            Log.d("ViewModel", "Regenerating summary for selected article")
+                            generateSummary(selectedArticle)
+                        }
                     }
                 }
 
@@ -109,31 +143,20 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 progressJob.cancel()
 
             } catch (e: Exception) {
-                Log.e("ViewModel", "Error downloading model: ${e.message}", e)
+                Log.e("ViewModel", "Error importing model: ${e.message}", e)
                 _uiState.update {
-                    it.copy(modelDownloadState = ModelDownloadManager.DownloadState.Error(e.message ?: "Unknown error"))
+                    it.copy(modelImportState = ModelFileManager.ImportState.Error(e.message ?: "Unknown error"))
                 }
             }
         }
     }
 
-    fun cancelModelDownload() {
-        Log.d("ViewModel", "Cancelling model download")
-        currentDownloadJob?.cancel()
-
+    fun cancelModelImport() {
+        Log.d("ViewModel", "Cancelling model import")
+        currentImportJob?.cancel()
         viewModelScope.launch {
-            // Access the ArticleSummarizer to cancel the download
-            articleSummarizer.downloadState.value.let {
-                if (it is ModelDownloadManager.DownloadState.Downloading) {
-                    // This will call the ModelDownloadManager's cancelDownload method
-                    val downloadManager = ModelDownloadManager(context)
-                    downloadManager.cancelDownload()
-
-                    // Update UI state
-                    _uiState.update { state ->
-                        state.copy(modelDownloadState = ModelDownloadManager.DownloadState.Idle)
-                    }
-                }
+            _uiState.update { state ->
+                state.copy(modelImportState = ModelFileManager.ImportState.Idle)
             }
         }
     }
@@ -147,10 +170,10 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
 
         currentSummaryJob = viewModelScope.launch {
             try {
-                // Check if model is downloaded
-                if (!articleSummarizer.isModelDownloaded) {
-                    Log.d("ViewModel", "Model not downloaded, showing ModelNotDownloaded state")
-                    _uiState.update { it.copy(summaryState = SummaryState.ModelNotDownloaded) }
+                // Check if model is imported
+                if (!articleSummarizer.isModelImported) {
+                    Log.d("ViewModel", "Model not imported, showing ModelNotImported state")
+                    _uiState.update { it.copy(summaryState = SummaryState.ModelNotImported) }
                     return@launch
                 }
 
@@ -246,7 +269,6 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     }
 
     // Load all feeds with optimized parallel loading
-// Partial optimization for loadFeeds method in NovascopeViewModel.kt
     fun loadFeeds(forceRefresh: Boolean = false) {
         // Cancel any existing load job
         currentLoadJob?.cancel()
@@ -504,10 +526,11 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // Helper method to check if model is downloaded
-    fun isModelDownloaded(): Boolean {
-        return articleSummarizer.isModelDownloaded
+    // Helper method to check if model is imported
+    fun isModelImported(): Boolean {
+        return articleSummarizer.isModelImported
     }
+
     // Update app settings
     fun updateSettings(settings: AppSettings) {
         _settings.value = settings
@@ -518,9 +541,12 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         super.onCleared()
         currentLoadJob?.cancel()
         currentSummaryJob?.cancel()
+        currentImportJob?.cancel()
         articleSummarizer.close()
         articlesCache.clear()
         lifecycleObserver = null
+        activity = null
+        filePickerCallback = null
     }
 }
 

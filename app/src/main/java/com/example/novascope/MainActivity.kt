@@ -27,14 +27,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -47,7 +44,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.novascope.ui.screens.ArticleDetailScreen
 import com.example.novascope.ui.screens.ExploreScreen
-import com.example.novascope.ui.screens.HomeScreen
+import com.example.novascope.ui.screens.HomeScreen  // Make sure this import is correct
 import com.example.novascope.ui.screens.SavedScreen
 import com.example.novascope.ui.screens.SettingsScreen
 import com.example.novascope.ui.theme.NovascopeTheme
@@ -55,6 +52,10 @@ import com.example.novascope.viewmodel.NovascopeViewModel
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 
 class MainActivity : ComponentActivity() {
+
+    // Create a ViewModel instance at the activity level
+    private lateinit var viewModel: NovascopeViewModel
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Enable edge-to-edge display
         enableEdgeToEdge()
@@ -64,9 +65,22 @@ class MainActivity : ComponentActivity() {
         // Set up window to draw behind system bars
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        // Initialize the ViewModel
+        viewModel = NovascopeViewModel(this)
+
+        // Register the activity with the ViewModel for file picking
+        viewModel.registerActivity(this)
+
         setContent {
-            NovascopeApp()
+            NovascopeApp(viewModel)
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        // Unregister the activity when it's destroyed
+        viewModel.unregisterActivity()
     }
 }
 
@@ -122,7 +136,7 @@ private val bottomNavItems = listOf(
 )
 
 @Composable
-fun NovascopeApp() {
+fun NovascopeApp(providedViewModel: NovascopeViewModel? = null) {
     NovascopeTheme {
         // Set up transparent status bar
         val systemUiController = rememberSystemUiController()
@@ -154,8 +168,8 @@ fun NovascopeApp() {
         // Get local context for ViewModel
         val context = LocalContext.current
 
-        // Create ViewModel
-        val viewModel: NovascopeViewModel = viewModel { NovascopeViewModel(context) }
+        // Create or use provided ViewModel
+        val viewModel = providedViewModel ?: viewModel { NovascopeViewModel(context) }
 
         Scaffold(
             bottomBar = {
@@ -254,7 +268,7 @@ fun NovascopeBottomNav(navController: NavHostController) {
                 },
                 label = { Text(screen.title) },
                 selected = selected,
-                // Let Material 3 handle colors by default - no explicit colors specified
+                // Let Material 3 handle colors by default
                 onClick = {
                     navController.navigate(screen.route) {
                         // Pop up to the start destination of the graph to
@@ -262,8 +276,7 @@ fun NovascopeBottomNav(navController: NavHostController) {
                         popUpTo(navController.graph.findStartDestination().id) {
                             saveState = true
                         }
-                        // Avoid multiple copies of the same destination when
-                        // reselecting the same item
+                        // Avoid multiple copies of the same destination
                         launchSingleTop = true
                         // Restore state when reselecting a previously selected item
                         restoreState = true

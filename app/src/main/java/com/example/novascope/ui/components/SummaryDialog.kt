@@ -26,6 +26,7 @@ import com.example.novascope.ai.SummaryState
 fun SummaryDialog(
     summaryState: SummaryState,
     onRetry: () -> Unit,
+    onImportClick: () -> Unit = {}, // Add import action
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -65,13 +66,13 @@ fun SummaryDialog(
                                 is SummaryState.Loading -> Icons.Default.Psychology
                                 is SummaryState.Success -> Icons.Default.Check
                                 is SummaryState.Error -> Icons.Default.Warning
-                                is SummaryState.ModelNotDownloaded -> Icons.Default.Download
+                                is SummaryState.ModelNotImported -> Icons.Default.FileOpen
                             },
                             tint = when (summaryState) {
                                 is SummaryState.Loading -> MaterialTheme.colorScheme.primary
                                 is SummaryState.Success -> MaterialTheme.colorScheme.primary
                                 is SummaryState.Error -> MaterialTheme.colorScheme.error
-                                is SummaryState.ModelNotDownloaded -> MaterialTheme.colorScheme.primary
+                                is SummaryState.ModelNotImported -> MaterialTheme.colorScheme.primary
                             }
                         )
 
@@ -137,7 +138,7 @@ fun SummaryDialog(
                             }
                         }
 
-                        is SummaryState.ModelNotDownloaded -> {
+                        is SummaryState.ModelNotImported -> {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -145,7 +146,7 @@ fun SummaryDialog(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Download,
+                                    imageVector = Icons.Default.FileOpen,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(48.dp)
@@ -154,14 +155,14 @@ fun SummaryDialog(
                                 Spacer(modifier = Modifier.height(16.dp))
 
                                 Text(
-                                    text = "AI model needs to be downloaded",
+                                    text = "AI model needs to be imported",
                                     style = MaterialTheme.typography.bodyLarge
                                 )
 
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 Text(
-                                    text = "Download the SmolLM2 model (20MB) to enable AI summaries",
+                                    text = "Import a GGUF model file (under 300MB) to enable AI summaries",
                                     style = MaterialTheme.typography.bodyMedium,
                                     textAlign = TextAlign.Center
                                 )
@@ -169,18 +170,18 @@ fun SummaryDialog(
                                 Spacer(modifier = Modifier.height(24.dp))
 
                                 Button(
-                                    onClick = onRetry, // This will trigger downloadModel in the ViewModel
+                                    onClick = onImportClick,
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = MaterialTheme.colorScheme.primary
                                     )
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Download,
+                                        imageVector = Icons.Default.FileOpen,
                                         contentDescription = null,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Download Model")
+                                    Text("Import Model")
                                 }
                             }
                         }
@@ -200,7 +201,7 @@ fun SummaryDialog(
                                 Divider()
 
                                 Text(
-                                    text = "Generated using SmolLM2-135M",
+                                    text = "Generated using extractive summarization",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                     modifier = Modifier

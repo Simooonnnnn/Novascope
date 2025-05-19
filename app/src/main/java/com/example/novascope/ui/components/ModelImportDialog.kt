@@ -1,4 +1,4 @@
-// app/src/main/java/com/example/novascope/ui/components/ModelDownloadDialog.kt
+// app/src/main/java/com/example/novascope/ui/components/ModelImportDialog.kt
 package com.example.novascope.ui.components
 
 import androidx.compose.foundation.layout.*
@@ -13,19 +13,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.example.novascope.ai.ModelDownloadManager
+import com.example.novascope.ai.ModelFileManager
 
 @Composable
-fun ModelDownloadDialog(
-    downloadState: ModelDownloadManager.DownloadState,
-    onDownloadClick: () -> Unit,
-    onCancelDownload: () -> Unit,
+fun ModelImportDialog(
+    importState: ModelFileManager.ImportState,
+    onImportClick: () -> Unit,
+    onCancelImport: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = {
-        // If we're in the middle of downloading, cancel the download
-        if (downloadState is ModelDownloadManager.DownloadState.Downloading) {
-            onCancelDownload()
+        // If we're in the middle of importing, cancel the import
+        if (importState is ModelFileManager.ImportState.Importing) {
+            onCancelImport()
         }
         onDismiss()
     }) {
@@ -59,46 +59,77 @@ fun ModelDownloadDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "To use AI summaries, you need to download the SmolLM2 language model (approx. 50MB).",
+                    text = "To use AI summaries, you need to import a GGUF language model file.",
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                when (downloadState) {
-                    is ModelDownloadManager.DownloadState.Idle -> {
+                when (importState) {
+                    is ModelFileManager.ImportState.Idle -> {
                         Button(
-                            onClick = onDownloadClick,
+                            onClick = onImportClick,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Download,
+                                imageVector = Icons.Default.FileOpen,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Download Model")
+                            Text("Select GGUF File")
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                Text(
+                                    text = "Compatible models:",
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Text(
+                                    text = "• SmolLm2-135m-q2_K.gguf\n• Phi-2-GGUF models\n• Other small GGUF models (under 300MB)",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = "You can download these models from Hugging Face or other model repositories.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                         }
                     }
 
-                    is ModelDownloadManager.DownloadState.Downloading -> {
+                    is ModelFileManager.ImportState.Importing -> {
                         Text(
-                            text = "Downloading: ${downloadState.progress}%",
+                            text = "Importing: ${importState.progress}%",
                             style = MaterialTheme.typography.bodyMedium
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
 
                         LinearProgressIndicator(
-                            progress = { downloadState.progress / 100f },
+                            progress = { importState.progress / 100f },
                             modifier = Modifier.fillMaxWidth()
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
-                            onClick = onCancelDownload,
+                            onClick = onCancelImport,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.error
                             ),
@@ -110,11 +141,11 @@ fun ModelDownloadDialog(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Cancel Download")
+                            Text("Cancel Import")
                         }
                     }
 
-                    is ModelDownloadManager.DownloadState.Success -> {
+                    is ModelFileManager.ImportState.Success -> {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
@@ -125,7 +156,7 @@ fun ModelDownloadDialog(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "Download complete!",
+                            text = "Import complete!",
                             style = MaterialTheme.typography.bodyLarge
                         )
 
@@ -139,7 +170,7 @@ fun ModelDownloadDialog(
                         }
                     }
 
-                    is ModelDownloadManager.DownloadState.Error -> {
+                    is ModelFileManager.ImportState.Error -> {
                         Icon(
                             imageVector = Icons.Default.Error,
                             contentDescription = null,
@@ -150,7 +181,7 @@ fun ModelDownloadDialog(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = downloadState.message,
+                            text = importState.message,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.error,
                             textAlign = TextAlign.Center
@@ -159,10 +190,10 @@ fun ModelDownloadDialog(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
-                            onClick = onDownloadClick,
+                            onClick = onImportClick,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Retry Download")
+                            Text("Try Again")
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -175,8 +206,8 @@ fun ModelDownloadDialog(
                     }
                 }
 
-                if (downloadState !is ModelDownloadManager.DownloadState.Success &&
-                    downloadState !is ModelDownloadManager.DownloadState.Downloading) {
+                if (importState !is ModelFileManager.ImportState.Success &&
+                    importState !is ModelFileManager.ImportState.Importing) {
                     Spacer(modifier = Modifier.height(8.dp))
 
                     TextButton(

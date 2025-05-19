@@ -10,28 +10,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.novascope.ai.ModelDownloadManager
+import com.example.novascope.ai.ModelFileManager
 import com.example.novascope.ai.SummaryState
 
 @Composable
 fun AiSummaryCardInArticleDetail(
     summaryState: SummaryState,
     onRetry: () -> Unit,
-    onDownloadClick: () -> Unit,
-    isModelDownloaded: Boolean,
+    onImportClick: () -> Unit,
+    isModelImported: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var showDownloadDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
 
-    if (showDownloadDialog) {
-        ModelDownloadDialog(
-            downloadState = if (isModelDownloaded)
-                ModelDownloadManager.DownloadState.Success
+    if (showImportDialog) {
+        ModelImportDialog(
+            importState = if (isModelImported)
+                ModelFileManager.ImportState.Success
             else
-                ModelDownloadManager.DownloadState.Idle,
-            onDownloadClick = onDownloadClick,
-            onCancelDownload = { /* cancel download */ },
-            onDismiss = { showDownloadDialog = false }
+                ModelFileManager.ImportState.Idle,
+            onImportClick = onImportClick,
+            onCancelImport = { /* cancel import */ },
+            onDismiss = { showImportDialog = false }
         )
     }
 
@@ -141,7 +141,7 @@ fun AiSummaryCardInArticleDetail(
                     }
                 }
 
-                is SummaryState.ModelNotDownloaded -> {
+                is SummaryState.ModelNotImported -> {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -149,7 +149,7 @@ fun AiSummaryCardInArticleDetail(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Download,
+                            imageVector = Icons.Default.FileOpen,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
@@ -158,7 +158,7 @@ fun AiSummaryCardInArticleDetail(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "AI model needs to be downloaded",
+                            text = "AI model needs to be imported",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -166,18 +166,18 @@ fun AiSummaryCardInArticleDetail(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
-                            onClick = { showDownloadDialog = true },
+                            onClick = { showImportDialog = true },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             )
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Download,
+                                imageVector = Icons.Default.FileOpen,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Download Model")
+                            Text("Import Model")
                         }
                     }
                 }

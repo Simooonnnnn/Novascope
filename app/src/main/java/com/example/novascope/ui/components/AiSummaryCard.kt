@@ -9,9 +9,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Warning // Keep this for the Error state
-// Add an icon for the new state if needed, e.g.:
-// import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,7 +23,7 @@ import com.example.novascope.ai.SummaryState
 fun AiSummaryCard(
     summaryState: SummaryState,
     onRetry: () -> Unit,
-    // Add any new callbacks if needed, e.g., onDownloadModel: () -> Unit
+    onImportClick: () -> Unit = {}, // Add import callback
     visible: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -131,47 +130,38 @@ fun AiSummaryCard(
                             }
                         }
                     }
-                    // Add the new branch here:
-                    is SummaryState.ModelNotDownloaded -> {
-                        // Implement the UI for when the model is not downloaded.
-                        // This is an example, adjust it to your needs.
+
+                    is SummaryState.ModelNotImported -> {
+                        // Implement the UI for when the model is not imported.
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // You might want a different icon, e.g., CloudDownload
                             Icon(
-                                imageVector = Icons.Filled.Warning, // Placeholder, change if needed
+                                imageVector = Icons.Default.FileOpen,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.tertiary, // Or another appropriate color
+                                tint = MaterialTheme.colorScheme.tertiary,
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "AI model needs to be downloaded to generate summaries.", // Or state.message if ModelNotDownloaded has a message
+                                text = "AI model needs to be imported to generate summaries.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant // Or another appropriate color
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            // You might want a button to trigger the download
-                            /*
                             Button(
-                                onClick = { /* Call a function to start model download */ },
+                                onClick = onImportClick,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
                                 )
                             ) {
-                                Text("Download Model")
+                                Text("Import Model")
                             }
-                            */
                         }
                     }
-                    // If SummaryState is a sealed class and you've covered all subtypes,
-                    // an 'else' branch is not strictly necessary. However, if it's an enum
-                    // or you want to be safe for future additions, you can add an 'else'.
-                    // else -> { /* Handle any other unexpected state, or leave empty if truly exhaustive */ }
                 }
             }
 
@@ -182,7 +172,7 @@ fun AiSummaryCard(
                 exit = fadeOut()
             ) {
                 Text(
-                    text = "Generated using SmolLM2-135M",
+                    text = "Generated using extractive summarization",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
                     modifier = Modifier

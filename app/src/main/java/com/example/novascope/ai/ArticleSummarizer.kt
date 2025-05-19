@@ -2,6 +2,7 @@
 package com.example.novascope.ai
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import com.example.novascope.model.NewsItem
 import kotlinx.coroutines.Dispatchers
@@ -17,8 +18,8 @@ import java.util.PriorityQueue
 class ArticleSummarizer(private val context: Context) {
     companion object {
         private const val TAG = "ArticleSummarizer"
-        private const val MODEL_FILE = ModelDownloadManager.MODEL_FILE
-        private const val VOCAB_FILE = ModelDownloadManager.VOCAB_FILE
+        private const val MODEL_FILE = ModelFileManager.MODEL_FILE
+        private const val VOCAB_FILE = ModelFileManager.VOCAB_FILE
         private const val MAX_INPUT_TOKENS = 512
         private const val MAX_OUTPUT_TOKENS = 150
         private const val FALLBACK_TEXT = "Unable to generate summary. Please try again later."
@@ -29,13 +30,13 @@ class ArticleSummarizer(private val context: Context) {
     private var vocabulary: Map<String, Int> = mapOf()
     private var invVocabulary: Map<Int, String> = mapOf()
 
-    // Use our model download manager
-    private val downloadManager = ModelDownloadManager(context)
+    // Use our model file manager
+    private val fileManager = ModelFileManager(context)
 
-    val isModelDownloaded: Boolean
-        get() = downloadManager.isModelDownloaded
+    val isModelImported: Boolean
+        get() = fileManager.isModelImported
 
-    val downloadState = downloadManager.downloadState
+    val importState = fileManager.importState
 
     // Initialize the model - with more diagnostics
     suspend fun initializeModel(): Boolean = withContext(Dispatchers.IO) {
@@ -45,8 +46,8 @@ class ArticleSummarizer(private val context: Context) {
                 return@withContext true
             }
 
-            if (!downloadManager.isModelDownloaded) {
-                Log.d(TAG, "Model is not downloaded")
+            if (!fileManager.isModelImported) {
+                Log.d(TAG, "Model is not imported")
                 return@withContext false
             }
 
@@ -82,9 +83,9 @@ class ArticleSummarizer(private val context: Context) {
         }
     }
 
-    // Download model
-    suspend fun downloadModel() {
-        downloadManager.downloadModel()
+    // Import model
+    suspend fun importModel(uri: Uri): Boolean {
+        return fileManager.importModel(uri)
     }
 
     // Load vocabulary from file
@@ -142,10 +143,10 @@ class ArticleSummarizer(private val context: Context) {
         emit(SummaryState.Loading)
 
         try {
-            // Check if model is downloaded first
-            if (!downloadManager.isModelDownloaded) {
-                Log.d(TAG, "Model not downloaded")
-                emit(SummaryState.ModelNotDownloaded)
+            // Check if model is imported first
+            if (!fileManager.isModelImported) {
+                Log.d(TAG, "Model not imported")
+                emit(SummaryState.ModelNotImported)
                 return@flow
             }
 
@@ -246,10 +247,10 @@ class ArticleSummarizer(private val context: Context) {
     }
 }
 
-// Update the SummaryState sealed class to include a ModelNotDownloaded state
+// Update the SummaryState sealed class to include a ModelNotImported state
 sealed class SummaryState {
     object Loading : SummaryState()
-    object ModelNotDownloaded : SummaryState()
+    object ModelNotImported : SummaryState()
     data class Success(val summary: String) : SummaryState()
     data class Error(val message: String) : SummaryState()
 }
