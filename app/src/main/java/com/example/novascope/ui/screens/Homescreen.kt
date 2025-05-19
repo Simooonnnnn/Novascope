@@ -20,6 +20,10 @@ import com.example.novascope.ui.components.LargeNewsCard
 import com.example.novascope.ui.components.SmallNewsCard
 import com.example.novascope.viewmodel.NovascopeViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.foundation.Image
+import com.example.novascope.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,12 +56,15 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "Novascope",
-                        style = MaterialTheme.typography.headlineLarge
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_novascope_logo),
+                        contentDescription = "Novascope Logo",
+                        modifier = Modifier
+                            .height(90.dp)
+                            .padding(vertical = 4.dp),
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
-                },
-                actions = {
+                },                actions = {
                     IconButton(onClick = { scope.launch { viewModel.loadFeeds(true) } }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
