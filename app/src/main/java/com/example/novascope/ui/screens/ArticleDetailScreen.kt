@@ -84,7 +84,6 @@ fun ArticleDetailScreen(
         }
     }
 
-    // If article is null, show a loading state
     if (article == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
