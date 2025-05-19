@@ -41,6 +41,8 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     private var currentLoadJob: Job? = null
     private var lifecycleObserver: LifecycleEventObserver? = null
     private var currentSummaryJob: Job? = null
+    private var currentDownloadJob: Job? = null // <--- Add this line
+
 
     // UI state with optimized updates
     data class UiState(
@@ -54,13 +56,18 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         val modelDownloadState: ModelDownloadManager.DownloadState = ModelDownloadManager.DownloadState.Idle
     )
 
+// Update the downloadModel function in NovascopeViewModel.kt
+
     fun downloadModel() {
-        viewModelScope.launch {
+        // Cancel any existing download job
+        currentDownloadJob?.cancel()
+
+        currentDownloadJob = viewModelScope.launch {
             try {
                 _uiState.update { it.copy(modelDownloadState = ModelDownloadManager.DownloadState.Downloading(0)) }
 
                 // Collect download progress updates
-                viewModelScope.launch {
+                val progressJob = viewModelScope.launch {
                     articleSummarizer.downloadState.collect { state ->
                         _uiState.update { it.copy(modelDownloadState = state) }
                     }
@@ -69,7 +76,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 // Start the download
                 articleSummarizer.downloadModel()
 
-                // Once download completes, initialize the model
+                // Once download completes successfully, initialize the model
                 if (articleSummarizer.isModelDownloaded) {
                     // Try to initialize with longer timeout
                     withTimeoutOrNull(30000L) {
@@ -82,10 +89,34 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                         generateSummary(selectedArticle)
                     }
                 }
+
+                // Make sure to cancel the progress collector when done
+                progressJob.cancel()
+
             } catch (e: Exception) {
                 Log.e("ViewModel", "Error downloading model: ${e.message}")
                 _uiState.update {
                     it.copy(modelDownloadState = ModelDownloadManager.DownloadState.Error(e.message ?: "Unknown error"))
+                }
+            }
+        }
+    }
+
+    // Add this function to cancel an ongoing download
+    fun cancelModelDownload() {
+        currentDownloadJob?.cancel()
+        // Also tell the download manager to cancel
+        articleSummarizer.downloadState.value.let {
+            if (it is ModelDownloadManager.DownloadState.Downloading) {
+                viewModelScope.launch {
+                    // Access the download manager through the article summarizer
+                    val downloadManager = ModelDownloadManager(context)
+                    downloadManager.cancelDownload()
+
+                    // Update UI state
+                    _uiState.update { state ->
+                        state.copy(modelDownloadState = ModelDownloadManager.DownloadState.Idle)
+                    }
                 }
             }
         }

@@ -19,135 +19,187 @@ import com.example.novascope.ai.ModelDownloadManager
 fun ModelDownloadDialog(
     downloadState: ModelDownloadManager.DownloadState,
     onDownloadClick: () -> Unit,
+    onCancelDownload: () -> Unit,  // Wird für Abbruch verwendet
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .clip(RoundedCornerShape(16.dp)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Column(
+    Dialog(onDismissRequest = {
+        // Wenn ein Download läuft, brechen wir diesen ab
+        if (downloadState is ModelDownloadManager.DownloadState.Downloading) {
+            onCancelDownload()
+        }
+        onDismiss()
+    }) {
+        Dialog(onDismissRequest = {
+            // If we're in the middle of downloading, cancel the download
+            if (downloadState is ModelDownloadManager.DownloadState.Downloading) {
+                onCancelDownload()
+            }
+            onDismiss()
+        }) {
+            Card(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxWidth(0.9f)
+                    .clip(RoundedCornerShape(16.dp)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Psychology,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Psychology,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                Text(
-                    text = "AI Summarization Model",
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center
-                )
+                    Text(
+                        text = "AI Summarization Model",
+                        style = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Center
+                    )
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "To use AI summaries, you need to download the SmolLM2 language model (20MB).",
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                when (downloadState) {
-                    is ModelDownloadManager.DownloadState.Idle -> {
-                        Button(
-                            onClick = onDownloadClick,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Download,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Download Model")
-                        }
-                    }
-
-                    is ModelDownloadManager.DownloadState.Downloading -> {
-                        Text(
-                            text = "Downloading: ${downloadState.progress}%",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        LinearProgressIndicator(
-                            progress = { downloadState.progress / 100f },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    is ModelDownloadManager.DownloadState.Success -> {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Download complete!",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Button(
-                            onClick = onDismiss,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Close")
-                        }
-                    }
-
-                    is ModelDownloadManager.DownloadState.Error -> {
-                        Icon(
-                            imageVector = Icons.Default.Error,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(48.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = downloadState.message,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.error
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Button(
-                            onClick = onDownloadClick,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Retry Download")
-                        }
-                    }
-                }
-
-                if (downloadState !is ModelDownloadManager.DownloadState.Success) {
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    TextButton(
-                        onClick = onDismiss
-                    ) {
-                        Text("Cancel")
+                    Text(
+                        text = "To use AI summaries, you need to download the SmolLM2 language model (20MB).",
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    when (downloadState) {
+                        is ModelDownloadManager.DownloadState.Idle -> {
+                            Button(
+                                onClick = onDownloadClick,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Download Model")
+                            }
+                        }
+
+                        is ModelDownloadManager.DownloadState.Downloading -> {
+                            Text(
+                                text = "Downloading: ${downloadState.progress}%",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            LinearProgressIndicator(
+                                progress = { downloadState.progress / 100f },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Cancel button is now properly functional
+                            Button(
+                                onClick = {
+                                    onCancelDownload()
+                                    onDismiss()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Cancel Download")
+                            }
+                        }
+
+                        is ModelDownloadManager.DownloadState.Success -> {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(48.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "Download complete!",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Button(
+                                onClick = onDismiss,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Close")
+                            }
+                        }
+
+                        is ModelDownloadManager.DownloadState.Error -> {
+                            Icon(
+                                imageVector = Icons.Default.Error,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(48.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = downloadState.message,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Button(
+                                onClick = onDownloadClick,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Retry Download")
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            TextButton(
+                                onClick = {
+                                    if (downloadState is ModelDownloadManager.DownloadState.Downloading) {
+                                        onCancelDownload()
+                                    }
+                                    onDismiss()
+                                }
+                            ) {
+                                Text("Close")
+                            }
+                        }
+                    }
+
+                    if (downloadState !is ModelDownloadManager.DownloadState.Success &&
+                        downloadState !is ModelDownloadManager.DownloadState.Downloading) {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        TextButton(
+                            onClick = onDismiss
+                        ) {
+                            Text("Cancel")
+                        }
                     }
                 }
             }

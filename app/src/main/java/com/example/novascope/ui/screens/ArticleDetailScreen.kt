@@ -124,6 +124,7 @@ fun ArticleDetailScreen(
         ModelDownloadDialog(
             downloadState = uiState.modelDownloadState,
             onDownloadClick = { viewModel.downloadModel() },
+            onCancelDownload = { viewModel.cancelModelDownload() }, // Add this line
             onDismiss = { /* Consider updating state to hide dialog */ }
         )
     }
