@@ -64,16 +64,7 @@ fun HomeScreen(
                             .padding(vertical = 4.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
-                },                actions = {
-                    IconButton(onClick = { scope.launch { viewModel.loadFeeds(true) } }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
-                    IconButton(onClick = onAddFeedClick) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Feed")
-                    }
-                    IconButton(onClick = { /* Handle notifications */ }) {
-                        Icon(Icons.Default.Notifications, contentDescription = "Notifications")
-                    }
+
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
