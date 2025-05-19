@@ -324,59 +324,28 @@ fun ArticleHeaderImage(article: NewsItem) {
     ) {
         // Hintergrundbild
         if (!article.imageUrl.isNullOrBlank()) {
-            val painter = rememberAsyncImagePainter(
+            AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(article.imageUrl)
                     .crossfade(true)
-                    .build()
+                    .build(),
+                contentDescription = article.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
             )
-
-            when (painter.state) {
-                is AsyncImagePainter.State.Loading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
-                is AsyncImagePainter.State.Success -> {
-                    Image(
-                        painter = painter,
-                        contentDescription = article.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                else -> {
-                    // Fallback für Error/Empty
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Article,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(64.dp)
-                        )
-                    }
-                }
-            }
         }
 
-        // Gradient-Overlay
+        // Gradient Overlay
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
-                    brush = Brush.verticalGradient(
+                    Brush.verticalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            Color.Black.copy(alpha = 0.7f)
-                        )
+                            Color.Black.copy(alpha = 0.7f) // Adjust alpha for desired darkness
+                        ),
+                        startY = headerImageHeight.value * 0.4f // Start gradient lower
                     )
                 )
         )
