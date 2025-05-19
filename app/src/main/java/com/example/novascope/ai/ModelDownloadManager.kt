@@ -6,8 +6,8 @@ import android.os.StatFs
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -31,27 +31,9 @@ class ModelDownloadManager(private val context: Context) {
         // Minimum free space required (20MB)
         private const val MIN_REQUIRED_SPACE = 20 * 1024 * 1024L
     }
-    private var isDownloading = false
-    private suspend fun downloadFileWithProgress(...) {
-        // ...
-        while (isActive && isDownloading && input.read(buffer).also { bytesRead = it } != -1) {
-            // Wenn der Download abgebrochen wurde, werfen wir eine CancellationException
-            if (!isDownloading) {
-                throw CancellationException("Download cancelled")
-            }
-            //
-
-    // Methode zum Abbrechen des Downloads
-    fun cancelDownload() {
-        isDownloading = false
-        _downloadState.value = DownloadState.Idle
-        // Aufräumen teilweise heruntergeladener Dateien
-        cleanupPartialDownloads()
-    }
-
 
     private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
-    val downloadState = _downloadState.asStateFlow()
+    val downloadState: StateFlow<DownloadState> = _downloadState.asStateFlow()
 
     // Flag to track if a download is in progress
     private var isDownloading = false
@@ -147,9 +129,10 @@ class ModelDownloadManager(private val context: Context) {
 
     // Cancel the current download
     fun cancelDownload() {
-        if (isDownloading && _downloadState.value is DownloadState.Downloading) {
-            _downloadState.value = DownloadState.Idle
+        if (isDownloading) {
             isDownloading = false
+            _downloadState.value = DownloadState.Idle
+            cleanupPartialDownloads()
         }
     }
 
@@ -182,11 +165,15 @@ class ModelDownloadManager(private val context: Context) {
                     val buffer = ByteArray(8192)
                     var totalBytesRead = 0L
                     var lastProgressUpdate = 0
-                    var bytesRead = 0 // Declare and initialize bytesRead here
+                    var bytesRead: Int = -1
 
-                    // Assign to bytesRead within the loop condition
-                    while (isActive && input.read(buffer).also { bytesRead = it } != -1) {
-                        // Now bytesRead is guaranteed to be initialized before use
+                    // Read from the input stream and write to the output file
+                    while (isActive && isDownloading && input.read(buffer).also { bytesRead = it } != -1) {
+                        // Check if download was canceled
+                        if (!isDownloading) {
+                            throw CancellationException("Download was cancelled")
+                        }
+
                         output.write(buffer, 0, bytesRead)
                         totalBytesRead += bytesRead
 
@@ -197,11 +184,6 @@ class ModelDownloadManager(private val context: Context) {
                             progressCallback(progress)
                             lastProgressUpdate = progress
                         }
-
-                        // Check if download was canceled
-                        if (!isDownloading || _downloadState.value !is DownloadState.Downloading) {
-                            throw CancellationException("Download was cancelled")
-                        }
                     }
                 }
             }
@@ -211,8 +193,10 @@ class ModelDownloadManager(private val context: Context) {
                 destination.delete()
             }
 
-            if (!tempFile.renameTo(destination)) {
-                throw IOException("Failed to finalize downloaded file")
+            if (isDownloading && tempFile.renameTo(destination)) {
+                // Success!
+            } else {
+                throw IOException("Failed to finalize downloaded file or download was cancelled")
             }
 
         } catch (e: Exception) {

@@ -64,6 +64,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
 
         currentDownloadJob = viewModelScope.launch {
             try {
+                // Update UI state
                 _uiState.update { it.copy(modelDownloadState = ModelDownloadManager.DownloadState.Downloading(0)) }
 
                 // Collect download progress updates
@@ -102,14 +103,14 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // Add this function to cancel an ongoing download
     fun cancelModelDownload() {
         currentDownloadJob?.cancel()
-        // Also tell the download manager to cancel
-        articleSummarizer.downloadState.value.let {
-            if (it is ModelDownloadManager.DownloadState.Downloading) {
-                viewModelScope.launch {
-                    // Access the download manager through the article summarizer
+
+        viewModelScope.launch {
+            // Access the ArticleSummarizer to cancel the download
+            articleSummarizer.downloadState.value.let {
+                if (it is ModelDownloadManager.DownloadState.Downloading) {
+                    // This will call the ModelDownloadManager's cancelDownload method
                     val downloadManager = ModelDownloadManager(context)
                     downloadManager.cancelDownload()
 

@@ -104,7 +104,7 @@ fun ModelDownloadDialog(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // Cancel button is now properly functional
+
                             Button(
                                 onClick = {
                                     onCancelDownload()

@@ -120,12 +120,12 @@ fun ArticleDetailScreen(
     }
 
     // Show model download dialog if needed
-    if (summaryState is SummaryState.ModelNotDownloaded) {
+    if (summaryState is SummaryState.ModelNotDownloaded && showSummaryDialog) {
         ModelDownloadDialog(
             downloadState = uiState.modelDownloadState,
             onDownloadClick = { viewModel.downloadModel() },
-            onCancelDownload = { viewModel.cancelModelDownload() }, // Add this line
-            onDismiss = { /* Consider updating state to hide dialog */ }
+            onCancelDownload = { viewModel.cancelModelDownload() },
+            onDismiss = { showSummaryDialog = false }
         )
     }
 
