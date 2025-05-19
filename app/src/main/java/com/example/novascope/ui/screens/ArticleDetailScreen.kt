@@ -33,6 +33,7 @@ import com.example.novascope.ai.SummaryState
 import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.AiSummaryCard
 import com.example.novascope.viewmodel.NovascopeViewModel
+import com.example.novascope.ui.components.SummaryDialog
 
 private const val TAG = "ArticleDetailScreen"
 

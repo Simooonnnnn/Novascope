@@ -8,18 +8,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
-import org.tensorflow.lite.task.text.nlclassifier.BertNLClassifier
-import org.tensorflow.lite.Tensor
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.support.label.Category
 import java.io.File
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.ByteBuffer
-import java.nio.FloatBuffer
-import java.nio.MappedByteBuffer
+import java.nio.ByteOrder
 import java.util.PriorityQueue
-import java.util.zip.ZipInputStream
 
 /**
  * Implementation of SmolLM2-135M integration for article summarization.
@@ -72,9 +68,6 @@ class ArticleSummarizer(private val context: Context) {
     }
 
     // Download and prepare model files
-// Updates to ArticleSummarizer.kt
-
-    // Inside the prepareModelFiles function
     private suspend fun prepareModelFiles() = withContext(Dispatchers.IO) {
         try {
             // Create the assets directory in the app's files directory if it doesn't exist
@@ -140,29 +133,34 @@ class ArticleSummarizer(private val context: Context) {
 
         val contentLength = connection.contentLength
 
-        connection.inputStream.use { input ->
-            FileOutputStream(destination).use { output ->
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                var totalBytesRead = 0L
-                var lastProgressUpdate = 0L
+        try {
+            connection.inputStream.use { input ->
+                FileOutputStream(destination).use { output ->
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    var totalBytesRead = 0L
+                    var lastProgressUpdate = 0L
 
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    output.write(buffer, 0, bytesRead)
-                    totalBytesRead += bytesRead
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        totalBytesRead += bytesRead
 
-                    // Update progress approximately every 5%
-                    if (contentLength > 0) {
-                        val progress = (totalBytesRead * 100 / contentLength)
-                        if (progress % 5 == 0L && progress != lastProgressUpdate) {
-                            lastProgressUpdate = progress
-                            Log.d(TAG, "$progressMessage $progress%")
+                        // Update progress approximately every 5%
+                        if (contentLength > 0) {
+                            val progress = (totalBytesRead * 100 / contentLength)
+                            if (progress % 5 == 0L && progress != lastProgressUpdate) {
+                                lastProgressUpdate = progress
+                                Log.d(TAG, "$progressMessage $progress%")
+                            }
                         }
                     }
                 }
             }
+        } finally {
+            connection.disconnect()
         }
     }
+
     // Load vocabulary from file
     private suspend fun loadVocabulary() = withContext(Dispatchers.IO) {
         try {
@@ -243,9 +241,6 @@ class ArticleSummarizer(private val context: Context) {
     }
 
     // Generate summary using the TF Lite model
-// Updates to ArticleSummarizer.kt
-
-    // Improve the generateSummaryWithModel function
     private fun generateSummaryWithModel(text: String): String {
         try {
             if (interpreter == null) return FALLBACK_TEXT
@@ -269,14 +264,14 @@ class ArticleSummarizer(private val context: Context) {
             Log.d(TAG, "Input IDs: ${inputIds.take(10)}... (truncated)")
 
             // Create input tensor
-            val inputBuffer = ByteBuffer.allocateDirect(4 * inputIds.size).order(java.nio.ByteOrder.nativeOrder())
+            val inputBuffer = ByteBuffer.allocateDirect(4 * inputIds.size).order(ByteOrder.nativeOrder())
             for (id in inputIds) {
                 inputBuffer.putInt(id)
             }
             inputBuffer.rewind()
 
             // Create output buffer for generated tokens
-            val outputBuffer = ByteBuffer.allocateDirect(4 * MAX_OUTPUT_TOKENS).order(java.nio.ByteOrder.nativeOrder())
+            val outputBuffer = ByteBuffer.allocateDirect(4 * MAX_OUTPUT_TOKENS).order(ByteOrder.nativeOrder())
 
             // Setup input/output
             val inputShape = intArrayOf(1, inputIds.size)
@@ -284,8 +279,11 @@ class ArticleSummarizer(private val context: Context) {
 
             // Run the model
             try {
-                val inputs = mapOf(0 to inputBuffer)
-                val outputs = mapOf(0 to outputBuffer)
+                // Create input/output objects that match TF Lite requirements
+                val inputs = arrayOf<Any>(inputBuffer)
+                val outputs = mutableMapOf<Int, Any>()
+                val inputsIndexes = intArrayOf(0)
+                val outputsIndexes = intArrayOf(0)
 
                 Log.d(TAG, "Running model inference...")
                 interpreter?.runForMultipleInputsOutputs(inputs, outputs)
@@ -343,7 +341,6 @@ class ArticleSummarizer(private val context: Context) {
             .replace(Regex("<[^>]*>"), "") // Remove HTML tags
             .trim()
     }
-
 
     // Fallback method for when the model can't be loaded
     suspend fun generateFallbackSummary(newsItem: NewsItem): String {

@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
@@ -229,11 +230,12 @@ private fun AnimatedIcon(
         tint = tint,
         modifier = modifier
             .size(32.dp)
-            .graphicsLayer {
+            .then(
                 if (icon == Icons.Default.Psychology) {
-                    this.scaleX = scale
-                    this.scaleY = scale
+                    Modifier.scale(scale)
+                } else {
+                    Modifier
                 }
-            }
+            )
     )
 }
