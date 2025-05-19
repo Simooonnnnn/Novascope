@@ -32,8 +32,6 @@ import coil.request.ImageRequest
 import com.example.novascope.ai.SummaryState
 import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.AiSummaryCard
-import com.example.novascope.ui.components.ModelDownloadDialog
-import com.example.novascope.ui.components.SummaryDialog
 import com.example.novascope.viewmodel.NovascopeViewModel
 
 private const val TAG = "ArticleDetailScreen"
@@ -114,19 +112,9 @@ fun ArticleDetailScreen(
     val summaryState = uiState.summaryState
 
     // UI state
-    var showSummaryDialog by remember { mutableStateOf(false) }
+    var showSummary by remember { mutableStateOf(true) }
     val isBookmarked = remember(article.id, uiState.bookmarkedItems) {
         uiState.bookmarkedItems.any { it.id == article.id }
-    }
-
-    // Show model download dialog if needed
-    if (summaryState is SummaryState.ModelNotDownloaded && showSummaryDialog) {
-        ModelDownloadDialog(
-            downloadState = uiState.modelDownloadState,
-            onDownloadClick = { viewModel.downloadModel() },
-            onCancelDownload = { viewModel.cancelModelDownload() },
-            onDismiss = { showSummaryDialog = false }
-        )
     }
 
     // Prepare share action outside of composable
@@ -174,23 +162,15 @@ fun ArticleDetailScreen(
                     }
                 },
                 actions = {
-                    // AI summary toggle button
-                    IconButton(
-                        onClick = {
-                            // Toggle showSummaryDialog instead of showSummary
-                            showSummaryDialog = !showSummaryDialog
-                            if (showSummaryDialog && summaryState !is SummaryState.Loading && summaryState !is SummaryState.Success) {
-                                // Only generate if not already generated or loading
-                                viewModel.selectArticle(article.id)
-                            }
-                        }
-                    ) {
+                    // AI summary toggle
+                    IconButton(onClick = { showSummary = !showSummary }) {
                         Icon(
-                            imageVector = Icons.Filled.Psychology,
-                            contentDescription = "Show AI Summary",
-                            tint = if (showSummaryDialog) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            imageVector = Icons.Rounded.Psychology,
+                            contentDescription = if (showSummary) "Hide Summary" else "Show Summary",
+                            tint = if (showSummary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
+
                     // Bookmark button
                     IconButton(onClick = { viewModel.toggleBookmark(article.id) }) {
                         Icon(
@@ -243,6 +223,17 @@ fun ArticleDetailScreen(
                 ArticleHeaderImage(article)
             }
 
+            // AI Summary Card (if enabled)
+            if (showSummary) {
+                item {
+                    AiSummaryCard(
+                        summaryState = summaryState,
+                        onRetry = { viewModel.selectArticle(article.id) },
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            }
+
             // Article Content
             item {
                 Column(
@@ -282,8 +273,7 @@ fun ArticleDetailScreen(
 
                         Text(
                             text = cleanContent,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(vertical = 8.dp),
+                            style = MaterialTheme.typography.bodyLarge
                         )
 
                         // Add "Read more" button if URL is available
@@ -303,62 +293,21 @@ fun ArticleDetailScreen(
             }
         }
     }
-    if (showSummaryDialog) {
-        SummaryDialog(
-            summaryState = summaryState,
-            onRetry = { viewModel.selectArticle(article.id) },
-            onDismiss = { showSummaryDialog = false }
-        )
-    }
 }
 
 // Helper function to clean HTML content
 private fun cleanHtmlContent(content: String?): String {
     if (content.isNullOrBlank()) return ""
 
-    // More intelligent HTML processing
     return content
-        // Preserve paragraph structure by replacing with line breaks
-        .replace("<p>", "\n\n")
-        .replace("</p>", "")
-        // Handle list items
-        .replace("<li>", "\n• ")
-        .replace("</li>", "")
-        // Handle headers with emphasis
-        .replace("<h1>", "\n\n")
-        .replace("</h1>", "\n")
-        .replace("<h2>", "\n\n")
-        .replace("</h2>", "\n")
-        .replace("<h3>", "\n\n")
-        .replace("</h3>", "\n")
-        // Handle basic formatting
-        .replace("<br>", "\n")
-        .replace("<br/>", "\n")
-        .replace("<br />", "\n")
-        // Preserve emphasis
-        .replace("<b>", "")
-        .replace("</b>", "")
-        .replace("<strong>", "")
-        .replace("</strong>", "")
-        .replace("<i>", "")
-        .replace("</i>", "")
-        .replace("<em>", "")
-        .replace("</em>", "")
-        // Remove remaining tags
-        .replace("<[^>]*>".toRegex(), "")
-        // Handle HTML entities
-        .replace("&nbsp;", " ")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&#8217;", "'")
-        .replace("&#8220;", """)
-        .replace("&#8221;", """)
-        .replace("&#8230;", "...")
-        // Fix multiple line breaks
-        .replace("\n\n\n+".toRegex(), "\n\n")
+        .replace("<[^>]*>".toRegex(), "") // Remove HTML tags
+        .replace("&nbsp;", " ")           // Replace &nbsp; with space
+        .replace("&lt;", "<")             // Replace &lt; with
+        .replace("&gt;", ">")             // Replace &gt; with >
+        .replace("&amp;", "&")            // Replace &amp; with &
+        .replace("&quot;", "\"")          // Replace &quot; with "
+        .replace("&apos;", "'")           // Replace &apos; with '
+        .replace("\n+".toRegex(), "\n\n") // Normalize line breaks
         .trim()
 }
 
