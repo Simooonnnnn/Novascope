@@ -33,6 +33,8 @@ import com.example.novascope.ai.SummaryState
 import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.AiSummaryCard
 import com.example.novascope.viewmodel.NovascopeViewModel
+import androidx.compose.ui.res.painterResource
+import coil.compose.AsyncImage
 
 private const val TAG = "ArticleDetailScreen"
 
@@ -314,72 +316,58 @@ private fun cleanHtmlContent(content: String?): String {
 @Composable
 fun ArticleHeaderImage(article: NewsItem) {
     val headerImageHeight = 240.dp
-    val context = LocalContext.current
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(headerImageHeight)
     ) {
-        // Default background in case image loading fails
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Article,
-                contentDescription = "Article",
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(64.dp)
-            )
-        }
-
-        // Handle image loading separately
+        // Hintergrundbild
         if (!article.imageUrl.isNullOrBlank()) {
-            // Prepare image loading outside try-catch
-            val imageRequest = ImageRequest.Builder(context)
-                .data(article.imageUrl)
-                .crossfade(true)
-                .build()
+            val painter = rememberAsyncImagePainter(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(article.imageUrl)
+                    .crossfade(true)
+                    .build()
+            )
 
-            val painter = rememberAsyncImagePainter(imageRequest)
-
-            // Only show image when successfully loaded
             when (painter.state) {
+                is AsyncImagePainter.State.Loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
                 is AsyncImagePainter.State.Success -> {
                     Image(
                         painter = painter,
-                        contentDescription = "Article image",
+                        contentDescription = article.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                is AsyncImagePainter.State.Loading -> {
+                else -> {
+                    // Fallback für Error/Empty
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                            .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
+                        Icon(
+                            imageVector = Icons.Rounded.Article,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(64.dp)
                         )
                     }
-                }
-                is AsyncImagePainter.State.Error -> {
-                    Log.e(TAG, "Error loading article image: ${article.imageUrl}")
-                    // Error state is handled by the default background already set
-                }
-                else -> {
-                    // Other states handled by default background
                 }
             }
         }
 
-        // Gradient overlay for better text visibility - always present
+        // Gradient-Overlay
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -388,56 +376,39 @@ fun ArticleHeaderImage(article: NewsItem) {
                         colors = listOf(
                             Color.Transparent,
                             Color.Black.copy(alpha = 0.7f)
-                        ),
-                        startY = 0f,
-                        endY = Float.POSITIVE_INFINITY
+                        )
                     )
                 )
         )
 
-        // Source and title overlay - always present
+        // Metadata (Source, Titel, etc.)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(16.dp)
         ) {
-            // Source with icon
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
-                // Source icon placeholder
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Handle source icon loading
-                    if (!article.sourceIconUrl.isNullOrBlank()) {
-                        val iconRequest = ImageRequest.Builder(context)
+                // Source Icon
+                if (!article.sourceIconUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
                             .data(article.sourceIconUrl)
                             .crossfade(true)
-                            .build()
-
-                        val iconPainter = rememberAsyncImagePainter(iconRequest)
-
-                        // Only render when successful
-                        if (iconPainter.state is AsyncImagePainter.State.Success) {
-                            Image(
-                                painter = iconPainter,
-                                contentDescription = "Source icon",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                    }
+                            .build(),
+                        contentDescription = "Source icon",
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentScale = ContentScale.Crop
+                    )
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Source name
                 Text(
                     text = article.sourceName,
                     style = MaterialTheme.typography.labelMedium,
@@ -446,7 +417,6 @@ fun ArticleHeaderImage(article: NewsItem) {
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Publish time
                 Surface(
                     shape = RoundedCornerShape(4.dp),
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
@@ -460,7 +430,6 @@ fun ArticleHeaderImage(article: NewsItem) {
                 }
             }
 
-            // Title - always present and reliable
             Text(
                 text = article.title,
                 style = MaterialTheme.typography.headlineSmall.copy(

@@ -122,9 +122,13 @@ dependencies {
 
     // RSS parser library
     implementation("com.prof18.rssparser:rssparser:6.0.3")
+    implementation("io.coil-kt:coil-compose:2.5.0") // Or the latest version
+
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.4.0")
+    implementation("androidx.compose.ui:ui-graphics:1.6.8") // Use the latest version
+
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
