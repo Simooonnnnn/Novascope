@@ -7,13 +7,15 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.novascope.model.NewsItem
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.novascope.ui.components.LargeNewsCard
 import com.example.novascope.ui.components.SmallNewsCard
 import com.example.novascope.viewmodel.NovascopeViewModel
@@ -30,16 +32,23 @@ fun HomeScreen(
     onNewsItemClick: (String) -> Unit = {},
     onAddFeedClick: () -> Unit = {}
 ) {
-    // Collect the entire state instead of selective parts
+    // Use collectAsState(initial) to avoid null states during initialization
     val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // LaunchedEffect to load feeds if needed
-    LaunchedEffect(Unit) {
-        if (uiState.newsItems.isEmpty()) {
-            scope.launch {
-                viewModel.loadFeeds(false)
+    // Only observe lifecycle once using DisposableEffect
+    DisposableEffect(Unit) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && uiState.newsItems.isEmpty()) {
+                scope.launch {
+                    viewModel.loadFeeds(false)
+                }
             }
+        }
+
+        viewModel.attachLifecycleObserver(observer)
+        onDispose {
+            viewModel.detachLifecycleObserver(observer)
         }
     }
 
@@ -55,6 +64,7 @@ fun HomeScreen(
                             .padding(vertical = 4.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
+
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -91,11 +101,11 @@ fun HomeScreen(
 
 @Composable
 private fun NewsContent(
-    newsItems: List<NewsItem>,
+    newsItems: List<com.example.novascope.model.NewsItem>,
     isRefreshing: Boolean,
     errorMessage: String?,
     onNewsItemClick: (String) -> Unit,
-    onBookmarkClick: (NewsItem) -> Unit,
+    onBookmarkClick: (com.example.novascope.model.NewsItem) -> Unit,
     bottomPadding: androidx.compose.ui.unit.Dp
 ) {
     LazyColumn(
@@ -107,8 +117,7 @@ private fun NewsContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        // Title header
-        item(key = "header") {
+        item {
             Text(
                 text = "For You",
                 style = MaterialTheme.typography.headlineSmall.copy(
@@ -120,7 +129,7 @@ private fun NewsContent(
 
         // Only show refresh indicator when actually refreshing
         if (isRefreshing) {
-            item(key = "refreshing") {
+            item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -136,7 +145,7 @@ private fun NewsContent(
 
         // Only show error message when present
         errorMessage?.let {
-            item(key = "error") {
+            item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -175,7 +184,7 @@ private fun NewsContent(
             }
         }
 
-        item(key = "footer") {
+        item {
             Spacer(modifier = Modifier.height(16.dp))
         }
     }

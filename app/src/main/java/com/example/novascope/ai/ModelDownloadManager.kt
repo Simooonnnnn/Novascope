@@ -22,15 +22,15 @@ class ModelDownloadManager(private val context: Context) {
 
     companion object {
         private const val TAG = "ModelDownloadManager"
-        const val MODEL_FILE = "smollm2_article_summarizer.tflite"
-        // Update to correct SmolLM2 model URL
-        const val MODEL_URL = "https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/model_optimized.tflite"
-        const val VOCAB_FILE = "smollm2_vocab.txt"
-        // Update to correct vocabulary URL
-        const val VOCAB_URL = "https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/tokenizer.json"
+        const val MODEL_FILE = "smollm2_article_summarizer.gguf"
 
-        // Increase required space to 50MB as the model is larger
-        private const val MIN_REQUIRED_SPACE = 50 * 1024 * 1024L
+        // Updated URLs with the new repository and specific q2_K model file
+        // This is a quantized version that should be smaller and faster
+        const val MODEL_URL = "https://huggingface.co/QuantFactory/SmolLM2-135M-GGUF/resolve/main/SmolLm2-135m-q2_K.gguf"
+        const val VOCAB_FILE = "smollm2_vocab.txt"
+
+        // Increase required space to 100MB to be safe
+        private const val MIN_REQUIRED_SPACE = 100 * 1024 * 1024L
     }
 
     private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
@@ -60,7 +60,7 @@ class ModelDownloadManager(private val context: Context) {
 
         // Check available storage space
         if (!hasEnoughSpace()) {
-            _downloadState.value = DownloadState.Error("Not enough storage space. Free up at least 50MB and try again.")
+            _downloadState.value = DownloadState.Error("Not enough storage space. Free up at least 100MB and try again.")
             return
         }
 
@@ -78,13 +78,16 @@ class ModelDownloadManager(private val context: Context) {
             val modelFile = File(context.filesDir, MODEL_FILE)
             val vocabFile = File(context.filesDir, VOCAB_FILE)
 
+            // Log attempt to download
+            Log.d(TAG, "Attempting to download model from: $MODEL_URL")
+
             // First download model (larger file)
             downloadFileWithProgress(MODEL_URL, modelFile) { progress ->
                 _downloadState.value = DownloadState.Downloading(progress / 2) // First half of progress
+                Log.d(TAG, "Download progress: $progress%")
             }
 
             // Add a simple placeholder vocabulary file for now
-            // In a production app, you'd need to parse the tokenizer.json properly
             createPlaceholderVocabFile(vocabFile)
             _downloadState.value = DownloadState.Downloading(100) // Complete
 
@@ -219,19 +222,25 @@ class ModelDownloadManager(private val context: Context) {
         progressCallback: (Int) -> Unit
     ) = withContext(Dispatchers.IO) {
         val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 60000 // 60 seconds - increased timeout
-        connection.readTimeout = 60000    // 60 seconds - increased timeout
+        connection.connectTimeout = 120000 // 120 seconds - increased timeout
+        connection.readTimeout = 120000    // 120 seconds - increased timeout
 
         try {
             // Add User-Agent header to avoid being blocked by Hugging Face
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 Novascope RSS App")
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+            connection.setRequestProperty("Accept", "*/*")
 
+            Log.d(TAG, "Connection established, getting response code...")
             val responseCode = connection.responseCode
             if (responseCode != HttpURLConnection.HTTP_OK) {
+                val errorMessage = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "No error details"
+                Log.e(TAG, "Server returned HTTP ${responseCode}: ${connection.responseMessage}, Details: $errorMessage")
                 throw IOException("Server returned HTTP ${responseCode}: ${connection.responseMessage}")
             }
 
             val contentLength = connection.contentLength
+            Log.d(TAG, "Content length: $contentLength bytes")
+
             if (contentLength <= 0) {
                 Log.w(TAG, "Content length not available, proceeding anyway")
             }
@@ -240,6 +249,7 @@ class ModelDownloadManager(private val context: Context) {
             val tempFile = File(destination.absolutePath + ".tmp")
             tempFile.createNewFile()
 
+            Log.d(TAG, "Starting to download file...")
             connection.inputStream.use { input ->
                 FileOutputStream(tempFile).use { output ->
                     val buffer = ByteArray(8192)
