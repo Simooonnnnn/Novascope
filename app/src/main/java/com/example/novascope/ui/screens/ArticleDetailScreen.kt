@@ -117,6 +117,14 @@ fun ArticleDetailScreen(
     val isBookmarked = remember(article.id, uiState.bookmarkedItems) {
         uiState.bookmarkedItems.any { it.id == article.id }
     }
+    if (summaryState is SummaryState.ModelNotDownloaded) {
+        ModelDownloadDialog(
+            downloadState = uiState.modelDownloadState,
+            onDownloadClick = { viewModel.downloadModel() },
+            onDismiss = { /* Consider updating state to hide dialog */ }
+        )
+    }
+
 
     // Prepare share action outside of composable
     val shareArticle = {

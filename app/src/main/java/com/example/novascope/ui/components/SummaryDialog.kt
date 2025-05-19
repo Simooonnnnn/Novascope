@@ -133,6 +133,56 @@ fun SummaryDialog(
                                 }
                             }
                         }
+                        // Updates to app/src/main/java/com/example/novascope/ui/components/SummaryDialog.kt
+
+// In the AnimatedContent section, add this case
+                        is SummaryState.ModelNotDownloaded -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(48.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Text(
+                                    text = "AI model needs to be downloaded",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = "Download the SmolLM2 model (20MB) to enable AI summaries",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = TextAlign.Center
+                                )
+
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                Button(
+                                    onClick = onRetry, // This will trigger downloadModel in the ViewModel
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Download Model")
+                                }
+                            }
+                        }
 
                         is SummaryState.Success -> {
                             Column(

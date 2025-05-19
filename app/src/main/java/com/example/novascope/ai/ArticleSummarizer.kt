@@ -1,4 +1,4 @@
-// app/src/main/java/com/example/novascope/ai/ArticleSummarizer.kt
+// Updates to app/src/main/java/com/example/novascope/ai/ArticleSummarizer.kt
 package com.example.novascope.ai
 
 import android.content.Context
@@ -10,24 +10,15 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.Interpreter
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.PriorityQueue
 
-/**
- * Implementation of SmolLM2-135M integration for article summarization.
- * This uses a small language model that can run locally on the device.
- */
 class ArticleSummarizer(private val context: Context) {
     companion object {
         private const val TAG = "ArticleSummarizer"
-        private const val MODEL_FILE = "smollm2_article_summarizer.tflite"
-        private const val MODEL_URL = "https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/model_optimized.tflite"
-        private const val VOCAB_FILE = "smollm2_vocab.txt"
-        private const val VOCAB_URL = "https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/tokenizer.txt"
+        private const val MODEL_FILE = ModelDownloadManager.MODEL_FILE
+        private const val VOCAB_FILE = ModelDownloadManager.VOCAB_FILE
         private const val MAX_INPUT_TOKENS = 512
         private const val MAX_OUTPUT_TOKENS = 150
         private const val FALLBACK_TEXT = "Unable to generate summary. Please try again later."
@@ -38,127 +29,49 @@ class ArticleSummarizer(private val context: Context) {
     private var vocabulary: Map<String, Int> = mapOf()
     private var invVocabulary: Map<Int, String> = mapOf()
 
-    // Initialize the model
-    suspend fun initializeModel() = withContext(Dispatchers.IO) {
-        try {
-            if (!modelInitialized) {
-                // Handle model downloading and initialization
-                prepareModelFiles()
+    // Use our model download manager
+    private val downloadManager = ModelDownloadManager(context)
 
-                // Load the model
-                val modelFile = File(context.filesDir, MODEL_FILE)
-                if (modelFile.exists()) {
-                    val options = Interpreter.Options()
-                    interpreter = Interpreter(modelFile, options)
-                    modelInitialized = true
-                    Log.d(TAG, "Model initialized successfully")
-                } else {
-                    Log.e(TAG, "Model file does not exist!")
-                    throw Exception("Model file not found")
-                }
+    val isModelDownloaded: Boolean
+        get() = downloadManager.isModelDownloaded
+
+    val downloadState = downloadManager.downloadState
+
+    // Initialize the model
+    suspend fun initializeModel(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (modelInitialized) return@withContext true
+
+            if (!downloadManager.isModelDownloaded) {
+                return@withContext false
+            }
+
+            // Load the model
+            val modelFile = File(context.filesDir, MODEL_FILE)
+            if (modelFile.exists()) {
+                val options = Interpreter.Options()
+                interpreter = Interpreter(modelFile, options)
 
                 // Load vocabulary
                 loadVocabulary()
+
+                modelInitialized = true
+                Log.d(TAG, "Model initialized successfully")
+                return@withContext true
+            } else {
+                Log.e(TAG, "Model file does not exist!")
+                return@withContext false
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing model", e)
-            // Don't throw - let the app continue with fallback summarization
             modelInitialized = false
+            return@withContext false
         }
     }
 
-    // Download and prepare model files
-    private suspend fun prepareModelFiles() = withContext(Dispatchers.IO) {
-        try {
-            // Create the assets directory in the app's files directory if it doesn't exist
-            val assetsDir = File(context.filesDir, "assets")
-            if (!assetsDir.exists()) {
-                assetsDir.mkdirs()
-            }
-
-            // Download model if needed
-            val modelFile = File(context.filesDir, MODEL_FILE)
-            if (!modelFile.exists()) {
-                try {
-                    // Use a more robust download method with progress tracking
-                    downloadFile(MODEL_URL, modelFile, "Downloading model...")
-                    Log.d(TAG, "Model downloaded successfully")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to download model: ${e.message}")
-                    // Try to use the bundled model from assets as fallback
-                    try {
-                        context.assets.open(MODEL_FILE).use { input ->
-                            FileOutputStream(modelFile).use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                        Log.d(TAG, "Using bundled model from assets")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to extract bundled model: ${e.message}")
-                    }
-                }
-            }
-
-            // Download vocabulary if needed
-            val vocabFile = File(context.filesDir, VOCAB_FILE)
-            if (!vocabFile.exists()) {
-                try {
-                    downloadFile(VOCAB_URL, vocabFile, "Downloading vocabulary...")
-                    Log.d(TAG, "Vocabulary downloaded successfully")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to download vocabulary: ${e.message}")
-                    // Try to use the bundled vocabulary from assets as fallback
-                    try {
-                        context.assets.open(VOCAB_FILE).use { input ->
-                            FileOutputStream(vocabFile).use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                        Log.d(TAG, "Using bundled vocabulary from assets")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to extract bundled vocabulary: ${e.message}")
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error preparing model files", e)
-        }
-    }
-
-    // Add a helper function for downloading files with progress tracking
-    private suspend fun downloadFile(url: String, destination: File, progressMessage: String) = withContext(Dispatchers.IO) {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 15000
-        connection.readTimeout = 15000
-
-        val contentLength = connection.contentLength
-
-        try {
-            connection.inputStream.use { input ->
-                FileOutputStream(destination).use { output ->
-                    val buffer = ByteArray(8192)
-                    var bytesRead: Int
-                    var totalBytesRead = 0L
-                    var lastProgressUpdate = 0L
-
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        totalBytesRead += bytesRead
-
-                        // Update progress approximately every 5%
-                        if (contentLength > 0) {
-                            val progress = (totalBytesRead * 100 / contentLength)
-                            if (progress % 5 == 0L && progress != lastProgressUpdate) {
-                                lastProgressUpdate = progress
-                                Log.d(TAG, "$progressMessage $progress%")
-                            }
-                        }
-                    }
-                }
-            }
-        } finally {
-            connection.disconnect()
-        }
+    // Download model
+    suspend fun downloadModel() {
+        downloadManager.downloadModel()
     }
 
     // Load vocabulary from file
@@ -194,13 +107,17 @@ class ArticleSummarizer(private val context: Context) {
         emit(SummaryState.Loading)
 
         try {
+            // Check if model is downloaded first
+            if (!downloadManager.isModelDownloaded) {
+                emit(SummaryState.ModelNotDownloaded)
+                return@flow
+            }
+
             // Ensure model is initialized
             if (!modelInitialized) {
-                try {
-                    initializeModel()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to initialize model", e)
-                    emit(SummaryState.Error("Failed to initialize model: ${e.message}"))
+                val initialized = initializeModel()
+                if (!initialized) {
+                    emit(SummaryState.Error("Failed to initialize model"))
                     return@flow
                 }
             }
@@ -239,6 +156,9 @@ class ArticleSummarizer(private val context: Context) {
             emit(SummaryState.Success("$fallback (Error: ${e.message})"))
         }
     }
+
+    // Rest of the methods remain the same...
+    // (keeping the existing methods for generateSummaryWithModel, tokenize, preprocessText, etc.)
 
     // Generate summary using the TF Lite model
     private fun generateSummaryWithModel(text: String): String {
@@ -378,9 +298,10 @@ class ArticleSummarizer(private val context: Context) {
     }
 }
 
-// State class for summary generation
+// Update the SummaryState sealed class to include a ModelNotDownloaded state
 sealed class SummaryState {
     object Loading : SummaryState()
+    object ModelNotDownloaded : SummaryState()
     data class Success(val summary: String) : SummaryState()
     data class Error(val message: String) : SummaryState()
 }

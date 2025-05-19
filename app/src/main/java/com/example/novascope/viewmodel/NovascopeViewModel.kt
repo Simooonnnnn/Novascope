@@ -49,8 +49,45 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         val bookmarkedItems: List<NewsItem> = emptyList(),
         val errorMessage: String? = null,
         val selectedArticle: NewsItem? = null,
-        val summaryState: SummaryState = SummaryState.Loading
+        val summaryState: SummaryState = SummaryState.Loading,
+        val modelDownloadState: ModelDownloadManager.DownloadState = ModelDownloadManager.DownloadState.Idle
     )
+    fun downloadModel() {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(modelDownloadState = ModelDownloadManager.DownloadState.Downloading(0)) }
+
+                // Collect download progress updates
+                viewModelScope.launch {
+                    articleSummarizer.downloadState.collect { state ->
+                        _uiState.update { it.copy(modelDownloadState = state) }
+                    }
+                }
+
+                // Start the download
+                articleSummarizer.downloadModel()
+
+                // Once download completes, initialize the model
+                if (articleSummarizer.isModelDownloaded) {
+                    // Try to initialize with longer timeout
+                    withTimeoutOrNull(30000L) {
+                        articleSummarizer.initializeModel()
+                    } ?: Log.w("ViewModel", "Model initialization timed out")
+
+                    // Try to generate summary again if there's a selected article
+                    val selectedArticle = _uiState.value.selectedArticle
+                    if (selectedArticle != null) {
+                        generateSummary(selectedArticle)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ViewModel", "Error downloading model: ${e.message}")
+                _uiState.update {
+                    it.copy(modelDownloadState = ModelDownloadManager.DownloadState.Error(e.message ?: "Unknown error"))
+                }
+            }
+        }
+    }
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
