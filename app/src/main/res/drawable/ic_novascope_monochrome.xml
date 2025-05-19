@@ -4,19 +4,18 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Adjusted viewBox to position the logo in the center of the adaptive icon circle -->
+    <!-- Monochrome version using a single color that will be tinted by Material You -->
     <group
-        android:scaleX="1.6"
-        android:scaleY="1.6"
-        android:translateX="36"
-        android:translateY="33">
-        <!-- Main "N" shape in black -->
+        android:scaleX="0.48"
+        android:scaleY="0.48"
+        android:translateX="28.08"
+        android:translateY="30.24">
+        <!-- Both parts of the logo using the same color for monochrome effect -->
         <path
             android:fillColor="#000000"
             android:pathData="M22.2828,26.1308H17.0573L2.28033e-05,0H5.22545L17.0573,17.9439V0H22.2828V26.1308Z"/>
-        <!-- Accent part in brand color -->
         <path
-            android:fillColor="#E86514"
+            android:fillColor="#000000"
             android:pathData="M5.22544,12.8505L5.22543,26.1308H0L7.23032e-06,4.62617L5.22544,12.8505Z"/>
     </group>
 </vector>

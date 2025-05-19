@@ -238,8 +238,6 @@ fun NovascopeBottomNav(navController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route
 
     NavigationBar(
-        // Using a completely flat navigation bar style like in CsBeCountdown
-        tonalElevation = 0.dp,
         // Using default container color from Material3
         containerColor = MaterialTheme.colorScheme.surface
     ) {
