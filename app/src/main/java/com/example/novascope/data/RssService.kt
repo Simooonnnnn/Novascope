@@ -99,8 +99,10 @@ class RssService {
                     val content = when {
                         !item.content.isNullOrBlank() -> item.content
                         !item.description.isNullOrBlank() -> item.description
+                        !item.title.isNullOrBlank() -> "No detailed content available for this article."
                         else -> "No content available"
                     }
+                    Log.d("RssService", "Content preview: ${content?.take(100)}")
 
                     // Make sure we have a valid title
                     val title = item.title?.takeIf { it.isNotBlank() } ?: "No title"
@@ -150,6 +152,22 @@ class RssService {
         // Try to find an image tag using the pre-compiled regex
         val match = imgPattern.find(content)
         return match?.groupValues?.getOrNull(1)
+    }
+
+    private fun extractBestContent(item: com.prof18.rssparser.model.RssItem): String {
+        // Try to get the best available content
+        return when {
+            // Check for content:encoded which often has full content
+            item.content?.length ?: 0 > 100 -> item.content ?: ""
+            // RSS sometimes puts full content in description
+            item.description?.length ?: 0 > 100 -> item.description ?: ""
+            // If both are available but short, combine them
+            (!item.content.isNullOrBlank() && !item.description.isNullOrBlank()) ->
+                "${item.description}\n\n${item.content}"
+            !item.content.isNullOrBlank() -> item.content ?: ""
+            !item.description.isNullOrBlank() -> item.description ?: ""
+            else -> "No content available"
+        }
     }
 
     // Parse publish date into milliseconds with thread-safe date formatters

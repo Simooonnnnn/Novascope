@@ -273,7 +273,8 @@ fun ArticleDetailScreen(
 
                         Text(
                             text = cleanContent,
-                            style = MaterialTheme.typography.bodyLarge
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(vertical = 8.dp),
                         )
 
                         // Add "Read more" button if URL is available
@@ -299,18 +300,51 @@ fun ArticleDetailScreen(
 private fun cleanHtmlContent(content: String?): String {
     if (content.isNullOrBlank()) return ""
 
+    // More intelligent HTML processing
     return content
-        .replace("<[^>]*>".toRegex(), "") // Remove HTML tags
-        .replace("&nbsp;", " ")           // Replace &nbsp; with space
-        .replace("&lt;", "<")             // Replace &lt; with
-        .replace("&gt;", ">")             // Replace &gt; with >
-        .replace("&amp;", "&")            // Replace &amp; with &
-        .replace("&quot;", "\"")          // Replace &quot; with "
-        .replace("&apos;", "'")           // Replace &apos; with '
-        .replace("\n+".toRegex(), "\n\n") // Normalize line breaks
+        // Preserve paragraph structure by replacing with line breaks
+        .replace("<p>", "\n\n")
+        .replace("</p>", "")
+        // Handle list items
+        .replace("<li>", "\n• ")
+        .replace("</li>", "")
+        // Handle headers with emphasis
+        .replace("<h1>", "\n\n")
+        .replace("</h1>", "\n")
+        .replace("<h2>", "\n\n")
+        .replace("</h2>", "\n")
+        .replace("<h3>", "\n\n")
+        .replace("</h3>", "\n")
+        // Handle basic formatting
+        .replace("<br>", "\n")
+        .replace("<br/>", "\n")
+        .replace("<br />", "\n")
+        // Preserve emphasis
+        .replace("<b>", "")
+        .replace("</b>", "")
+        .replace("<strong>", "")
+        .replace("</strong>", "")
+        .replace("<i>", "")
+        .replace("</i>", "")
+        .replace("<em>", "")
+        .replace("</em>", "")
+        // Remove remaining tags
+        .replace("<[^>]*>".toRegex(), "")
+        // Handle HTML entities
+        .replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#8217;", "'")
+        .replace("&#8220;", """)
+        .replace("&#8221;", """)
+        .replace("&#8230;", "...")
+        // Fix multiple line breaks
+        .replace("\n\n\n+".toRegex(), "\n\n")
         .trim()
 }
-
 @Composable
 fun ArticleHeaderImage(article: NewsItem) {
     val headerImageHeight = 240.dp
