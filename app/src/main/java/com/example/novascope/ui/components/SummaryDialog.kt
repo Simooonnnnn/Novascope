@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -64,11 +65,13 @@ fun SummaryDialog(
                                 is SummaryState.Loading -> Icons.Default.Psychology
                                 is SummaryState.Success -> Icons.Default.Check
                                 is SummaryState.Error -> Icons.Default.Warning
+                                is SummaryState.ModelNotDownloaded -> Icons.Default.Download
                             },
                             tint = when (summaryState) {
                                 is SummaryState.Loading -> MaterialTheme.colorScheme.primary
                                 is SummaryState.Success -> MaterialTheme.colorScheme.primary
                                 is SummaryState.Error -> MaterialTheme.colorScheme.error
+                                is SummaryState.ModelNotDownloaded -> MaterialTheme.colorScheme.primary
                             }
                         )
 
@@ -133,9 +136,7 @@ fun SummaryDialog(
                                 }
                             }
                         }
-                        // Updates to app/src/main/java/com/example/novascope/ui/components/SummaryDialog.kt
 
-// In the AnimatedContent section, add this case
                         is SummaryState.ModelNotDownloaded -> {
                             Column(
                                 modifier = Modifier
@@ -205,7 +206,7 @@ fun SummaryDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(top = 8.dp),
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                    textAlign = TextAlign.End
                                 )
                             }
                         }

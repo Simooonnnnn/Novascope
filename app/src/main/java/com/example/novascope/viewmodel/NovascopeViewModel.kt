@@ -7,6 +7,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.novascope.ai.ArticleSummarizer
+import com.example.novascope.ai.ModelDownloadManager
 import com.example.novascope.ai.SummaryState
 import com.example.novascope.data.FeedRepository
 import com.example.novascope.data.RssService
@@ -52,6 +53,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         val summaryState: SummaryState = SummaryState.Loading,
         val modelDownloadState: ModelDownloadManager.DownloadState = ModelDownloadManager.DownloadState.Idle
     )
+
     fun downloadModel() {
         viewModelScope.launch {
             try {
@@ -360,9 +362,6 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     }
 
     // Select article for detail view with optimized summary loading
-// Modify this method in app/src/main/java/com/example/novascope/viewmodel/NovascopeViewModel.kt
-
-    // Select article for detail view with optimized summary loading
     fun selectArticle(articleId: String) {
         // Cancel any existing summary generation job
         currentSummaryJob?.cancel()
@@ -398,42 +397,42 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-        // Generate summary with local AI and caching
-        private fun generateSummary(newsItem: NewsItem) {
-            // Set loading state immediately
-            _uiState.update { it.copy(summaryState = SummaryState.Loading) }
+    // Generate summary with local AI and caching
+    private fun generateSummary(newsItem: NewsItem) {
+        // Set loading state immediately
+        _uiState.update { it.copy(summaryState = SummaryState.Loading) }
 
-            currentSummaryJob = viewModelScope.launch {
+        currentSummaryJob = viewModelScope.launch {
+            try {
+                // Use a timeout to prevent hanging
+                withTimeoutOrNull(15000L) {
+                    articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
+                        _uiState.update { it.copy(summaryState = summaryState) }
+                    }
+                } ?: run {
+                    // Timeout occurred, use fallback
+                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
+                    _uiState.update {
+                        it.copy(summaryState = SummaryState.Success("$fallbackSummary (timeout occurred)"))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ViewModel", "Error generating summary: ${e.message}")
+
+                // Try fallback summary on error
                 try {
-                    // Use a timeout to prevent hanging
-                    withTimeoutOrNull(15000L) {
-                        articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
-                            _uiState.update { it.copy(summaryState = summaryState) }
-                        }
-                    } ?: run {
-                        // Timeout occurred, use fallback
-                        val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
-                        _uiState.update {
-                            it.copy(summaryState = SummaryState.Success("$fallbackSummary (timeout occurred)"))
-                        }
+                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
+                    _uiState.update {
+                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
                     }
                 } catch (e: Exception) {
-                    Log.e("ViewModel", "Error generating summary: ${e.message}")
-
-                    // Try fallback summary on error
-                    try {
-                        val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
-                        _uiState.update {
-                            it.copy(summaryState = SummaryState.Success(fallbackSummary))
-                        }
-                    } catch (e: Exception) {
-                        _uiState.update {
-                            it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
-                        }
+                    _uiState.update {
+                        it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
                     }
                 }
             }
         }
+    }
 
     // Update app settings
     fun updateSettings(settings: AppSettings) {

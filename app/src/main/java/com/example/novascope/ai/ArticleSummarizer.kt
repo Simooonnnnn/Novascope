@@ -1,4 +1,4 @@
-// Updates to app/src/main/java/com/example/novascope/ai/ArticleSummarizer.kt
+// app/src/main/java/com/example/novascope/ai/ArticleSummarizer.kt
 package com.example.novascope.ai
 
 import android.content.Context
@@ -156,9 +156,6 @@ class ArticleSummarizer(private val context: Context) {
             emit(SummaryState.Success("$fallback (Error: ${e.message})"))
         }
     }
-
-    // Rest of the methods remain the same...
-    // (keeping the existing methods for generateSummaryWithModel, tokenize, preprocessText, etc.)
 
     // Generate summary using the TF Lite model
     private fun generateSummaryWithModel(text: String): String {

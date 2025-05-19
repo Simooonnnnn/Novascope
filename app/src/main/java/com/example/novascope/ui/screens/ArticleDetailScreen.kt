@@ -32,8 +32,9 @@ import coil.request.ImageRequest
 import com.example.novascope.ai.SummaryState
 import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.AiSummaryCard
-import com.example.novascope.viewmodel.NovascopeViewModel
+import com.example.novascope.ui.components.ModelDownloadDialog
 import com.example.novascope.ui.components.SummaryDialog
+import com.example.novascope.viewmodel.NovascopeViewModel
 
 private const val TAG = "ArticleDetailScreen"
 
@@ -117,6 +118,8 @@ fun ArticleDetailScreen(
     val isBookmarked = remember(article.id, uiState.bookmarkedItems) {
         uiState.bookmarkedItems.any { it.id == article.id }
     }
+
+    // Show model download dialog if needed
     if (summaryState is SummaryState.ModelNotDownloaded) {
         ModelDownloadDialog(
             downloadState = uiState.modelDownloadState,
@@ -124,7 +127,6 @@ fun ArticleDetailScreen(
             onDismiss = { /* Consider updating state to hide dialog */ }
         )
     }
-
 
     // Prepare share action outside of composable
     val shareArticle = {
@@ -171,7 +173,7 @@ fun ArticleDetailScreen(
                     }
                 },
                 actions = {
-// AI summary toggle button
+                    // AI summary toggle button
                     IconButton(
                         onClick = {
                             // Toggle showSummaryDialog instead of showSummary
@@ -307,7 +309,6 @@ fun ArticleDetailScreen(
             onDismiss = { showSummaryDialog = false }
         )
     }
-
 }
 
 // Helper function to clean HTML content
@@ -359,6 +360,7 @@ private fun cleanHtmlContent(content: String?): String {
         .replace("\n\n\n+".toRegex(), "\n\n")
         .trim()
 }
+
 @Composable
 fun ArticleHeaderImage(article: NewsItem) {
     val headerImageHeight = 240.dp
