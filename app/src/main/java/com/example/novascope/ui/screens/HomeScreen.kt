@@ -3,27 +3,27 @@ package com.example.novascope.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.foundation.Image
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.ui.text.font.FontWeight
+import com.example.novascope.R
+import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.LargeNewsCard
 import com.example.novascope.ui.components.SmallNewsCard
 import com.example.novascope.viewmodel.NovascopeViewModel
 import kotlinx.coroutines.launch
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.foundation.Image
-import com.example.novascope.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,23 +32,13 @@ fun HomeScreen(
     onNewsItemClick: (String) -> Unit = {},
     onAddFeedClick: () -> Unit = {}
 ) {
-    // Use collectAsState(initial) to avoid null states during initialization
     val uiState by viewModel.uiState.collectAsState()
-    val scope = rememberCoroutineScope()
+    val lazyListState = rememberLazyListState()
 
-    // Only observe lifecycle once using DisposableEffect
-    DisposableEffect(Unit) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && uiState.newsItems.isEmpty()) {
-                scope.launch {
-                    viewModel.loadFeeds(false)
-                }
-            }
-        }
-
-        viewModel.attachLifecycleObserver(observer)
-        onDispose {
-            viewModel.detachLifecycleObserver(observer)
+    // Load feeds only once when the screen is first shown
+    LaunchedEffect(Unit) {
+        if (uiState.newsItems.isEmpty() && !uiState.isLoading) {
+            viewModel.loadFeeds(false)
         }
     }
 
@@ -64,7 +54,6 @@ fun HomeScreen(
                             .padding(vertical = 4.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
-
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -78,58 +67,66 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding())
         ) {
-            // Show loading indicator at the top
-            if (uiState.isLoading && !uiState.isRefreshing) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-
-            if (uiState.newsItems.isEmpty() && !uiState.isLoading && !uiState.isRefreshing) {
-                EmptyFeedView(onAddFeedClick)
-            } else {
-                NewsContent(
-                    newsItems = uiState.newsItems,
-                    isRefreshing = uiState.isRefreshing,
-                    errorMessage = uiState.errorMessage,
-                    onNewsItemClick = onNewsItemClick,
-                    onBookmarkClick = { viewModel.toggleBookmark(it.id) },
-                    bottomPadding = padding.calculateBottomPadding()
-                )
+            when {
+                uiState.isLoading && uiState.newsItems.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+                uiState.newsItems.isEmpty() && !uiState.isLoading -> {
+                    EmptyFeedView(onAddFeedClick)
+                }
+                else -> {
+                    OptimizedNewsContent(
+                        newsItems = uiState.newsItems,
+                        isRefreshing = uiState.isRefreshing,
+                        errorMessage = uiState.errorMessage,
+                        onNewsItemClick = onNewsItemClick,
+                        onBookmarkClick = viewModel::toggleBookmark,
+                        bottomPadding = padding.calculateBottomPadding(),
+                        lazyListState = lazyListState
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun NewsContent(
-    newsItems: List<com.example.novascope.model.NewsItem>,
+private fun OptimizedNewsContent(
+    newsItems: List<NewsItem>,
     isRefreshing: Boolean,
     errorMessage: String?,
     onNewsItemClick: (String) -> Unit,
-    onBookmarkClick: (com.example.novascope.model.NewsItem) -> Unit,
-    bottomPadding: androidx.compose.ui.unit.Dp
+    onBookmarkClick: (String) -> Unit,
+    bottomPadding: androidx.compose.ui.unit.Dp,
+    lazyListState: LazyListState
 ) {
     LazyColumn(
+        state = lazyListState,
         contentPadding = PaddingValues(
             bottom = bottomPadding + 16.dp,
             start = 16.dp,
-            end = 16.dp
+            end = 16.dp,
+            top = 16.dp
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        item {
+        item(key = "header") {
             Text(
                 text = "For You",
                 style = MaterialTheme.typography.headlineSmall.copy(
                     fontWeight = FontWeight.Medium
-                ),
-                modifier = Modifier.padding(vertical = 16.dp)
+                )
             )
         }
 
-        // Only show refresh indicator when actually refreshing
         if (isRefreshing) {
-            item {
+            item(key = "loading") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -143,9 +140,8 @@ private fun NewsContent(
             }
         }
 
-        // Only show error message when present
-        errorMessage?.let {
-            item {
+        errorMessage?.let { error ->
+            item(key = "error") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -153,7 +149,7 @@ private fun NewsContent(
                     )
                 ) {
                     Text(
-                        text = it,
+                        text = error,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.padding(16.dp)
@@ -162,30 +158,29 @@ private fun NewsContent(
             }
         }
 
-        // Optimized item rendering with stable keys
-        itemsIndexed(
+        items(
             items = newsItems,
-            key = { _, item -> item.id }
-        ) { index, item ->
+            key = { it.id },
+            contentType = { item ->
+                if (newsItems.indexOf(item).let { it == 0 || (it + 1) % 5 == 0 }) "large" else "small"
+            }
+        ) { item ->
+            val index = newsItems.indexOf(item)
             val useBigCard = index == 0 || (index + 1) % 5 == 0
 
             if (useBigCard) {
                 LargeNewsCard(
                     newsItem = item,
-                    onBookmarkClick = onBookmarkClick,
+                    onBookmarkClick = { onBookmarkClick(it.id) },
                     onCardClick = { onNewsItemClick(it.id) }
                 )
             } else {
                 SmallNewsCard(
                     newsItem = item,
-                    onBookmarkClick = onBookmarkClick,
+                    onBookmarkClick = { onBookmarkClick(it.id) },
                     onCardClick = { onNewsItemClick(it.id) }
                 )
             }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

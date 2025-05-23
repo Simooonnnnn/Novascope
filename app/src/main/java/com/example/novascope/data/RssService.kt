@@ -4,217 +4,126 @@ package com.example.novascope.data
 import android.util.Log
 import com.example.novascope.model.NewsItem
 import com.prof18.rssparser.RssParser
-import com.prof18.rssparser.model.RssChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.text.ParseException
 import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Optimized service for fetching and parsing RSS feeds
- */
 class RssService {
     private val rssParser = RssParser()
 
-    // Cache for already fetched feeds to avoid redundant network calls
-    private val feedCache = ConcurrentHashMap<String, CacheEntry>()
-
-    // Cache expiration time (10 minutes)
-    private val CACHE_EXPIRATION_MS = 10 * 60 * 1000L
-
-    // Date format parsers - created once and reused
-    private val dateFormats = listOf(
-        ThreadLocal.withInitial { SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH).apply { timeZone = TimeZone.getTimeZone("UTC") } },
-        ThreadLocal.withInitial { SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.ENGLISH).apply { timeZone = TimeZone.getTimeZone("UTC") } },
-        ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.ENGLISH).apply { timeZone = TimeZone.getTimeZone("UTC") } },
-        ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.ENGLISH).apply { timeZone = TimeZone.getTimeZone("UTC") } },
-        ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.ENGLISH).apply { timeZone = TimeZone.getTimeZone("UTC") } },
-        ThreadLocal.withInitial { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).apply { timeZone = TimeZone.getTimeZone("UTC") } }
-    )
-
-    // Relative time formatter - created once
-    private val relativeTimeFormatter = SimpleDateFormat("MMM d", Locale.getDefault())
-
-    // Image URL regex pattern - compiled once
-    private val imgPattern = "<img[^>]+src\\s*=\\s*['\"]([^'\"]+)['\"][^>]*>".toRegex()
-
-    suspend fun fetchFeed(url: String, forceRefresh: Boolean = false): List<NewsItem> {
-        return withContext(Dispatchers.IO) {
-            try {
-                // Check cache first if not forcing refresh
-                if (!forceRefresh) {
-                    val cachedEntry = feedCache[url]
-                    if (cachedEntry != null && !isCacheExpired(cachedEntry.timestamp)) {
-                        Log.d("RssService", "Using cached feed for $url")
-                        return@withContext cachedEntry.items
-                    }
-                }
-
-                Log.d("RssService", "Fetching feed from $url")
-
-                // Add timeout to prevent hanging on bad connections
-                val channel = withTimeoutOrNull(15000L) {
-                    try {
-                        rssParser.getRssChannel(url)
-                    } catch (e: Exception) {
-                        Log.e("RssService", "Error parsing RSS: ${e.message}")
-                        // Create an empty channel as fallback
-                        RssChannel(
-                            title = "Unknown Feed",
-                            link = url,
-                            description = "",
-                            lastBuildDate = "",
-                            image = null,
-                            items = emptyList(),
-                            updatePeriod = null,
-                            itunesChannelData = null
-                        )
-                    }
-                } ?: RssChannel(
-                    title = "Unknown Feed",
-                    link = url,
-                    description = "",
-                    lastBuildDate = "",
-                    image = null,
-                    items = emptyList(),
-                    updatePeriod = null,
-                    itunesChannelData = null
-                )
-
-                // Extract feed icon if available
-                val feedIcon = channel.image?.url
-
-                // Preallocate ArrayList with the correct capacity for better performance
-                val items = ArrayList<NewsItem>(channel.items.size)
-
-                // Process items more efficiently
-                channel.items.forEachIndexed { index, item ->
-                    // Calculate publish time in millis for sorting
-                    val publishDateMillis = parsePublishDate(item.pubDate ?: "")
-
-                    // Safely handle content with early null checks for better performance
-                    val content = when {
-                        !item.content.isNullOrBlank() -> item.content
-                        !item.description.isNullOrBlank() -> item.description
-                        !item.title.isNullOrBlank() -> "No detailed content available for this article."
-                        else -> "No content available"
-                    }
-
-                    // Make sure we have a valid title
-                    val title = item.title?.takeIf { it.isNotBlank() } ?: "No title"
-
-                    // Generate a deterministic ID from title and link for better caching
-                    val safeId = item.link?.let { "${item.title}_$it".hashCode().toString() }
-                        ?: UUID.randomUUID().toString()
-
-                    // Extract image efficiently
-                    val imageUrl = item.image ?: (content?.let {
-                        if (it.length < 5000) findImageInContent(it) else null
-                    })
-
-                    items.add(NewsItem(
-                        id = safeId,
-                        title = title,
-                        imageUrl = imageUrl,
-                        sourceIconUrl = feedIcon,
-                        sourceName = channel.title ?: "Unknown Source",
-                        publishTime = formatRelativeTime(publishDateMillis),
-                        publishTimeMillis = publishDateMillis,
-                        content = content,
-                        url = item.link ?: "", // Provide an empty string if item.link is null
-                        feedId = null,
-                        isBookmarked = false,
-                        isBigArticle = index == 0
-                    ))
-                }
-
-                // Cache the results
-                feedCache[url] = CacheEntry(items, System.currentTimeMillis())
-
-                items
-            } catch (e: Exception) {
-                Log.e("RssService", "Error fetching feed: ${e.message}", e)
-                // Return cached entry if it exists, even if expired
-                return@withContext feedCache[url]?.items ?: emptyList()
-            }
-        }
-    }
-
-    // Check if cache has expired
-    private fun isCacheExpired(timestamp: Long): Boolean {
-        return System.currentTimeMillis() - timestamp > CACHE_EXPIRATION_MS
-    }
-
-    // Extract image URL from HTML content with improved pattern matching
-    private fun findImageInContent(content: String): String? {
-        // If content is empty, return null
-        if (content.isBlank()) return null
-
-        // Try to find an image tag using the pre-compiled regex
-        val match = imgPattern.find(content)
-        return match?.groupValues?.getOrNull(1)
-    }
-
-    // Parse publish date into milliseconds with thread-safe date formatters
-    private fun parsePublishDate(pubDate: String): Long {
-        if (pubDate.isBlank()) return System.currentTimeMillis()
-
-        for (formatThreadLocal in dateFormats) {
-            try {
-                val format = formatThreadLocal.get()
-                val date = format.parse(pubDate)
-                if (date != null) {
-                    return date.time
-                }
-            } catch (e: ParseException) {
-                // Try next format
-            }
-        }
-
-        // If no format matches, return current time
-        return System.currentTimeMillis()
-    }
-
-    // Format relative time string (e.g., "2h ago", "3d ago") with optimizations
-    private fun formatRelativeTime(timeMillis: Long): String {
-        val now = System.currentTimeMillis()
-        val diff = now - timeMillis
-
-        // Handle cases of incorrect future dates
-        if (diff < 0) return "Just now"
-
-        return when {
-            diff < 60 * 1000 -> "Just now"
-            diff < 60 * 60 * 1000 -> "${diff / (60 * 1000)}m"
-            diff < 24 * 60 * 60 * 1000 -> "${diff / (60 * 60 * 1000)}h"
-            diff < 7 * 24 * 60 * 60 * 1000 -> "${diff / (24 * 60 * 60 * 1000)}d"
-            diff < 30 * 24 * 60 * 60 * 1000 -> "${diff / (7 * 24 * 60 * 60 * 1000)}w"
-            else -> {
-                val date = Date(timeMillis)
-                relativeTimeFormatter.format(date)
-            }
-        }
-    }
-
-    // Clear cache for a specific URL or all URLs
-    fun clearCache(url: String? = null) {
-        if (url != null) {
-            feedCache.remove(url)
-        } else {
-            feedCache.clear()
-        }
-    }
-
-    // Data class for caching feed entries
+    // Simple cache with timestamp
     private data class CacheEntry(
         val items: List<NewsItem>,
         val timestamp: Long
     )
+
+    private val cache = ConcurrentHashMap<String, CacheEntry>()
+    private val CACHE_DURATION = 10 * 60 * 1000L // 10 minutes
+
+    // Single date formatter reused
+    private val dateParser = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }
+
+    // Precompiled regex for image extraction
+    private val imgRegex = """<img[^>]+src\s*=\s*['"]([^'"]+)['"][^>]*>""".toRegex()
+
+    suspend fun fetchFeed(url: String, forceRefresh: Boolean = false): List<NewsItem> {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Check cache first
+                if (!forceRefresh) {
+                    cache[url]?.let { entry ->
+                        if (System.currentTimeMillis() - entry.timestamp < CACHE_DURATION) {
+                            return@withContext entry.items
+                        }
+                    }
+                }
+
+                // Fetch with timeout
+                val channel = withTimeoutOrNull(10000L) {
+                    rssParser.getRssChannel(url)
+                }
+
+                if (channel == null) {
+                    Log.e("RssService", "Timeout fetching feed: $url")
+                    return@withContext cache[url]?.items ?: emptyList()
+                }
+
+                val feedIcon = channel.image?.url
+                val feedTitle = channel.title ?: "Unknown Source"
+
+                // Process items efficiently
+                val items = channel.items.mapIndexed { index, item ->
+                    val publishTimeMillis = parseDate(item.pubDate)
+                    val content = item.content ?: item.description ?: ""
+
+                    NewsItem(
+                        id = "${item.title}_${item.link}".hashCode().toString(),
+                        title = item.title ?: "No title",
+                        imageUrl = item.image ?: extractImage(content),
+                        sourceIconUrl = feedIcon,
+                        sourceName = feedTitle,
+                        publishTime = formatRelativeTime(publishTimeMillis),
+                        publishTimeMillis = publishTimeMillis,
+                        content = content,
+                        url = item.link ?: "",
+                        feedId = null,
+                        isBookmarked = false,
+                        isBigArticle = index == 0
+                    )
+                }
+
+                // Update cache
+                cache[url] = CacheEntry(items, System.currentTimeMillis())
+                items
+
+            } catch (e: Exception) {
+                Log.e("RssService", "Error fetching feed: ${e.message}")
+                cache[url]?.items ?: emptyList()
+            }
+        }
+    }
+
+    private fun parseDate(dateStr: String?): Long {
+        if (dateStr.isNullOrBlank()) return System.currentTimeMillis()
+
+        return try {
+            dateParser.parse(dateStr)?.time ?: System.currentTimeMillis()
+        } catch (e: Exception) {
+            // Try alternative formats if needed
+            System.currentTimeMillis()
+        }
+    }
+
+    private fun extractImage(content: String): String? {
+        if (content.length > 5000) return null // Skip large content
+        return imgRegex.find(content)?.groupValues?.getOrNull(1)
+    }
+
+    private fun formatRelativeTime(timeMillis: Long): String {
+        val diff = System.currentTimeMillis() - timeMillis
+
+        return when {
+            diff < 0 -> "Just now"
+            diff < 60_000 -> "Just now"
+            diff < 3_600_000 -> "${diff / 60_000}m"
+            diff < 86_400_000 -> "${diff / 3_600_000}h"
+            diff < 604_800_000 -> "${diff / 86_400_000}d"
+            else -> {
+                SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timeMillis))
+            }
+        }
+    }
+
+    fun clearCache(url: String? = null) {
+        if (url != null) {
+            cache.remove(url)
+        } else {
+            cache.clear()
+        }
+    }
 }

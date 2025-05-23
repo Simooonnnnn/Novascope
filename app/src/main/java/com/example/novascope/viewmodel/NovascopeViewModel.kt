@@ -7,7 +7,6 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.novascope.ai.ArticleSummarizer
@@ -18,20 +17,10 @@ import com.example.novascope.data.RssService
 import com.example.novascope.model.Feed
 import com.example.novascope.model.FeedCategory
 import com.example.novascope.model.NewsItem
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.*
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 
 class NovascopeViewModel(private val context: Context) : ViewModel() {
 
@@ -40,17 +29,12 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     private val feedRepository = FeedRepository(context)
     private val articleSummarizer = ArticleSummarizer(context)
 
-    // Tracking state
-    private val isLoadingFeeds = AtomicBoolean(false)
-    private var currentLoadJob: Job? = null
-    private var lifecycleObserver: LifecycleEventObserver? = null
-    private var currentSummaryJob: Job? = null
-    private var currentImportJob: Job? = null
+    // Job management
+    private var loadFeedsJob: Job? = null
+    private var summaryJob: Job? = null
+    private var importJob: Job? = null
 
-    // File picker
-    private var filePickerCallback: ((Uri) -> Unit)? = null
-
-    // UI state with optimized updates
+    // UI state
     data class UiState(
         val isLoading: Boolean = false,
         val isRefreshing: Boolean = false,
@@ -62,14 +46,52 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         val modelImportState: ModelFileManager.ImportState = ModelFileManager.ImportState.Idle
     )
 
-    // Register activity for file picking
+    private val _uiState = MutableStateFlow(UiState())
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    // Feeds with SharedFlow for better performance
+    private val _feeds = MutableSharedFlow<List<Feed>>(
+        replay = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val feeds: SharedFlow<List<Feed>> = _feeds.asSharedFlow()
+
+    // Settings
+    private val _settings = MutableStateFlow(AppSettings())
+    val settings: StateFlow<AppSettings> = _settings.asStateFlow()
+
+    // Bookmarked IDs for faster lookup
+    private val bookmarkedIds = mutableSetOf<String>()
+
+    // Activity for file picking
     private var activity: ComponentActivity? = null
     private var modelFilePickerLauncher: ActivityResultLauncher<String>? = null
 
+    init {
+        // Initialize feeds
+        viewModelScope.launch {
+            feedRepository.feeds.collect { latestFeeds ->
+                _feeds.emit(latestFeeds)
+                if (_uiState.value.newsItems.isEmpty()) {
+                    loadFeeds()
+                }
+            }
+        }
+
+        // Initialize AI model in background
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                withTimeoutOrNull(5000L) {
+                    articleSummarizer.initializeModel()
+                }
+            } catch (e: Exception) {
+                Log.e("ViewModel", "Error initializing AI model: ${e.message}")
+            }
+        }
+    }
+
     fun registerActivity(activity: ComponentActivity) {
         this.activity = activity
-
-        // Initialize the file picker launcher
         modelFilePickerLauncher = activity.registerForActivityResult(
             ActivityResultContracts.GetContent()
         ) { uri ->
@@ -82,241 +104,48 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     }
 
     fun unregisterActivity() {
-        this.activity = null
-        // The launcher will be automatically released when the activity is destroyed
+        activity = null
     }
 
     fun launchModelFilePicker() {
         modelFilePickerLauncher?.launch("*/*")
     }
 
-    // Import model from URI
-    private suspend fun importModelFromUri(uri: Uri) {
-        // Cancel any existing import job
-        currentImportJob?.cancel()
-
-        currentImportJob = viewModelScope.launch {
-            try {
-                // Update UI state to importing
-                _uiState.update { it.copy(modelImportState = ModelFileManager.ImportState.Importing(0)) }
-
-                // Collect import progress updates
-                val progressJob = viewModelScope.launch {
-                    articleSummarizer.importState.collect { state ->
-                        _uiState.update { it.copy(modelImportState = state) }
-
-                        // Log progress
-                        if (state is ModelFileManager.ImportState.Importing) {
-                            Log.d("ViewModel", "Import progress: ${state.progress}%")
-                        } else if (state is ModelFileManager.ImportState.Success) {
-                            Log.d("ViewModel", "Import completed successfully")
-                        } else if (state is ModelFileManager.ImportState.Error) {
-                            Log.e("ViewModel", "Import error: ${state.message}")
-                        }
-                    }
-                }
-
-                // Start the import
-                val importResult = articleSummarizer.importModel(uri)
-
-                if (importResult) {
-                    // Once import completes successfully, initialize the model
-                    if (articleSummarizer.isModelImported) {
-                        Log.d("ViewModel", "Model imported, initializing...")
-                        // Try to initialize with longer timeout
-                        val initialized = withTimeoutOrNull(30000L) {
-                            articleSummarizer.initializeModel()
-                        } ?: false
-
-                        Log.d("ViewModel", "Model initialization result: $initialized")
-
-                        // Try to generate summary again if there's a selected article
-                        val selectedArticle = _uiState.value.selectedArticle
-                        if (selectedArticle != null && initialized) {
-                            Log.d("ViewModel", "Regenerating summary for selected article")
-                            generateSummary(selectedArticle)
-                        }
-                    }
-                }
-
-                // Make sure to cancel the progress collector when done
-                progressJob.cancel()
-
-            } catch (e: Exception) {
-                Log.e("ViewModel", "Error importing model: ${e.message}", e)
-                _uiState.update {
-                    it.copy(modelImportState = ModelFileManager.ImportState.Error(e.message ?: "Unknown error"))
-                }
-            }
-        }
-    }
-
-    fun cancelModelImport() {
-        Log.d("ViewModel", "Cancelling model import")
-        currentImportJob?.cancel()
-        viewModelScope.launch {
-            _uiState.update { state ->
-                state.copy(modelImportState = ModelFileManager.ImportState.Idle)
-            }
-        }
-    }
-
-    // Generate summary with local AI and caching
-    private fun generateSummary(newsItem: NewsItem) {
-        // Set loading state immediately
-        _uiState.update { it.copy(summaryState = SummaryState.Loading) }
-
-        Log.d("ViewModel", "Generating summary for article: ${newsItem.title}")
-
-        currentSummaryJob = viewModelScope.launch {
-            try {
-                // Check if model is imported
-                if (!articleSummarizer.isModelImported) {
-                    Log.d("ViewModel", "Model not imported, showing ModelNotImported state")
-                    _uiState.update { it.copy(summaryState = SummaryState.ModelNotImported) }
-                    return@launch
-                }
-
-                // Initialize model if needed
-                if (!articleSummarizer.initializeModel()) {
-                    Log.e("ViewModel", "Failed to initialize model")
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Error("Failed to initialize model"))
-                    }
-                    return@launch
-                }
-
-                // Use a timeout to prevent hanging
-                withTimeoutOrNull(15000L) {
-                    articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
-                        Log.d("ViewModel", "Summary state updated: $summaryState")
-                        _uiState.update { it.copy(summaryState = summaryState) }
-                    }
-                } ?: run {
-                    // Timeout occurred, use fallback
-                    Log.w("ViewModel", "Summary generation timed out, using fallback")
-                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("ViewModel", "Error generating summary: ${e.message}", e)
-
-                // Try fallback summary on error
-                try {
-                    val fallbackSummary = articleSummarizer.generateFallbackSummary(newsItem)
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Success(fallbackSummary))
-                    }
-                } catch (e: Exception) {
-                    _uiState.update {
-                        it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
-                    }
-                }
-            }
-        }
-    }
-    private val _uiState = MutableStateFlow(UiState())
-    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
-
-    // Feeds from repository
-    private val _feeds = MutableStateFlow<List<Feed>>(emptyList())
-    val feeds: StateFlow<List<Feed>> = _feeds.asStateFlow()
-
-    // Settings
-    private val _settings = MutableStateFlow(AppSettings())
-    val settings: StateFlow<AppSettings> = _settings.asStateFlow()
-
-    // Articles cache to avoid recreating objects
-    private val articlesCache = ConcurrentHashMap<String, NewsItem>()
-
-    init {
-        // Observe feeds from repository
-        viewModelScope.launch {
-            feedRepository.feeds.collect { latestFeeds ->
-                _feeds.value = latestFeeds
-                // Only reload feeds when necessary
-                if (uiState.value.newsItems.isEmpty() && !isLoadingFeeds.get()) {
-                    loadFeeds()
-                }
-            }
-        }
-
-        // Initialize the AI model in a non-blocking way
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                // Add timeout to prevent blocking if model initialization takes too long
-                withTimeoutOrNull(10000L) {
-                    articleSummarizer.initializeModel()
-                } ?: Log.w("ViewModel", "Model initialization timed out")
-            } catch (e: Exception) {
-                Log.e("ViewModel", "Error initializing AI model: ${e.message}")
-                // Don't crash, continue without the model
-            }
-        }
-    }
-
-    // Add lifecycle observer management
-    fun attachLifecycleObserver(observer: LifecycleEventObserver) {
-        lifecycleObserver = observer
-    }
-
-    fun detachLifecycleObserver(observer: LifecycleEventObserver) {
-        if (lifecycleObserver === observer) {
-            lifecycleObserver = null
-        }
-    }
-
-    // Load all feeds with optimized parallel loading
     fun loadFeeds(forceRefresh: Boolean = false) {
-        // Cancel any existing load job
-        currentLoadJob?.cancel()
-
-        // Set loading state atomically
-        if (!isLoadingFeeds.compareAndSet(false, true)) {
-            if (!forceRefresh) return  // Don't reload if already loading
-        }
-
-        currentLoadJob = viewModelScope.launch {
+        loadFeedsJob?.cancel()
+        loadFeedsJob = viewModelScope.launch {
             try {
-                // Update loading state only - separate update to reduce composition passes
                 _uiState.update {
                     it.copy(
                         isRefreshing = forceRefresh,
-                        isLoading = !forceRefresh
+                        isLoading = !forceRefresh && it.newsItems.isEmpty(),
+                        errorMessage = null
                     )
                 }
 
                 if (forceRefresh) {
-                    // Clear cache when forcing refresh
                     rssService.clearCache()
                 }
 
                 val enabledFeeds = feedRepository.getEnabledFeeds()
-
-                // Don't proceed if no feeds are enabled
                 if (enabledFeeds.isEmpty()) {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             isRefreshing = false,
-                            newsItems = emptyList(),
-                            bookmarkedItems = emptyList(),
-                            errorMessage = null
+                            newsItems = emptyList()
                         )
                     }
                     return@launch
                 }
 
-                // Process feeds in parallel with improved error handling
-                val results = withContext(Dispatchers.IO) {
+                // Process feeds in parallel with structured concurrency
+                val newsItems = coroutineScope {
                     enabledFeeds.map { feed ->
-                        async {
+                        async(Dispatchers.IO) {
                             try {
-                                val items = rssService.fetchFeed(feed.url, forceRefresh)
-                                // Add the feed ID to each item for tracking
-                                items.map { it.copy(feedId = feed.id) }
+                                rssService.fetchFeed(feed.url, forceRefresh)
+                                    .map { it.copy(feedId = feed.id) }
                             } catch (e: Exception) {
                                 Log.e("ViewModel", "Error loading feed ${feed.name}: ${e.message}")
                                 emptyList()
@@ -325,8 +154,27 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                     }.awaitAll().flatten()
                 }
 
-                // Process results efficiently with a single state update
-                processNewsItems(results)
+                // Process and update UI in one pass
+                val sortedItems = newsItems
+                    .mapIndexed { index, item ->
+                        item.copy(
+                            isBookmarked = bookmarkedIds.contains(item.id),
+                            isBigArticle = index == 0
+                        )
+                    }
+                    .sortedByDescending { it.publishTimeMillis }
+
+                val bookmarkedItems = sortedItems.filter { it.isBookmarked }
+
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        newsItems = sortedItems,
+                        bookmarkedItems = bookmarkedItems,
+                        errorMessage = null
+                    )
+                }
 
             } catch (e: Exception) {
                 Log.e("ViewModel", "Error loading feeds: ${e.message}")
@@ -337,91 +185,34 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                         errorMessage = "Error loading feeds: ${e.message}"
                     )
                 }
-            } finally {
-                isLoadingFeeds.set(false)
             }
         }
     }
 
-    private fun processNewsItems(newItems: List<NewsItem>) {
-        // Perform all processing in one pass for better efficiency
-        val processedItems = ArrayList<NewsItem>(newItems.size)
-        val bookmarkedItems = ArrayList<NewsItem>()
-
-        newItems.forEachIndexed { index, item ->
-            val existingItem = articlesCache[item.id]
-            val isBookmarked = existingItem?.isBookmarked == true
-
-            // Create updated item with bookmarked status and big article flag
-            val updatedItem = item.copy(
-                isBookmarked = isBookmarked,
-                isBigArticle = index == 0 && processedItems.isEmpty()
-            )
-
-            // Update cache
-            articlesCache[item.id] = updatedItem
-
-            // Add to processed items
-            processedItems.add(updatedItem)
-
-            // Add to bookmarked items if bookmarked
-            if (isBookmarked) {
-                bookmarkedItems.add(updatedItem)
-            }
-        }
-
-        // Sort once by publish time for better performance
-        val sortedItems = processedItems.sortedByDescending { it.publishTimeMillis }
-
-        // Update state in a single pass
-        _uiState.update {
-            it.copy(
-                isLoading = false,
-                isRefreshing = false,
-                newsItems = sortedItems,
-                bookmarkedItems = bookmarkedItems,
-                errorMessage = null
-            )
-        }
-    }
-
-    // Toggle bookmark with optimized state updates
     fun toggleBookmark(newsItemId: String) {
-        val cachedItem = articlesCache[newsItemId] ?: return
-
-        // Update cache directly for immediate response
-        val updatedItem = cachedItem.copy(isBookmarked = !cachedItem.isBookmarked)
-        articlesCache[newsItemId] = updatedItem
+        if (bookmarkedIds.contains(newsItemId)) {
+            bookmarkedIds.remove(newsItemId)
+        } else {
+            bookmarkedIds.add(newsItemId)
+        }
 
         _uiState.update { state ->
-            // Update main items list efficiently
             val updatedItems = state.newsItems.map {
-                if (it.id == newsItemId) updatedItem else it
+                if (it.id == newsItemId) it.copy(isBookmarked = !it.isBookmarked) else it
             }
-
-            // Update bookmarked items list
-            val updatedBookmarks = if (updatedItem.isBookmarked) {
-                state.bookmarkedItems + updatedItem
-            } else {
-                state.bookmarkedItems.filter { it.id != newsItemId }
-            }
-
-            // If this is the selected article, update that too
-            val updatedSelectedArticle = if (state.selectedArticle?.id == newsItemId) {
-                updatedItem
-            } else {
-                state.selectedArticle
+            val updatedBookmarks = updatedItems.filter { it.isBookmarked }
+            val updatedSelected = state.selectedArticle?.let {
+                if (it.id == newsItemId) it.copy(isBookmarked = bookmarkedIds.contains(newsItemId)) else it
             }
 
             state.copy(
                 newsItems = updatedItems,
                 bookmarkedItems = updatedBookmarks,
-                selectedArticle = updatedSelectedArticle
+                selectedArticle = updatedSelected
             )
         }
     }
 
-    // Add a new feed
     fun addFeed(name: String, url: String, category: FeedCategory) {
         viewModelScope.launch {
             val newFeed = Feed(
@@ -431,92 +222,61 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 category = category,
                 isEnabled = true
             )
-
             feedRepository.addFeed(newFeed)
         }
     }
 
-    // Delete a feed
     fun deleteFeed(feedId: String) {
         viewModelScope.launch {
             feedRepository.deleteFeed(feedId)
-
-            // Remove associated articles from UI
             _uiState.update { state ->
-                val updatedItems = state.newsItems.filter { it.feedId != feedId }
-                val updatedBookmarks = state.bookmarkedItems.filter { it.feedId != feedId }
-
                 state.copy(
-                    newsItems = updatedItems,
-                    bookmarkedItems = updatedBookmarks
+                    newsItems = state.newsItems.filter { it.feedId != feedId },
+                    bookmarkedItems = state.bookmarkedItems.filter { it.feedId != feedId }
                 )
             }
         }
     }
 
-    // Toggle feed enabled state
     fun toggleFeedEnabled(feedId: String, isEnabled: Boolean) {
         viewModelScope.launch {
             feedRepository.toggleFeedEnabled(feedId, isEnabled)
-
-            // If disabling a feed, remove its items from UI
             if (!isEnabled) {
                 _uiState.update { state ->
-                    val updatedItems = state.newsItems.filter { it.feedId != feedId }
-                    val updatedBookmarks = state.bookmarkedItems.filter { it.feedId != feedId }
-
                     state.copy(
-                        newsItems = updatedItems,
-                        bookmarkedItems = updatedBookmarks
+                        newsItems = state.newsItems.filter { it.feedId != feedId },
+                        bookmarkedItems = state.bookmarkedItems.filter { it.feedId != feedId }
                     )
                 }
             }
         }
     }
 
-    // Get a feed by its URL with timeout
     suspend fun getFeedInfoFromUrl(url: String): String {
-        return withContext(Dispatchers.IO) {
-            try {
-                // Add timeout to prevent blocking
-                val items = withTimeoutOrNull(5000L) {
-                    rssService.fetchFeed(url)
-                } ?: return@withContext url
-
-                items.firstOrNull()?.sourceName ?: url
-            } catch (e: Exception) {
-                url
-            }
+        return try {
+            withTimeoutOrNull(3000L) {
+                rssService.fetchFeed(url).firstOrNull()?.sourceName
+            } ?: url
+        } catch (e: Exception) {
+            url
         }
     }
 
-    // Select article for detail view with optimized summary loading
     fun selectArticle(articleId: String) {
-        // Cancel any existing summary generation job
-        currentSummaryJob?.cancel()
+        summaryJob?.cancel()
 
-        // Try to find the article in multiple places
-        val article = articlesCache[articleId]
-            ?: _uiState.value.newsItems.find { it.id == articleId }
+        val article = _uiState.value.newsItems.find { it.id == articleId }
             ?: _uiState.value.bookmarkedItems.find { it.id == articleId }
 
         if (article != null) {
-            // Always update the selected article in the UI state
             _uiState.update { it.copy(selectedArticle = article) }
 
-            // Log the found article for debugging
-            Log.d("NovascopeViewModel", "Article found: ${article.title}")
-            Log.d("NovascopeViewModel", "Article content length: ${article.content?.length ?: 0}")
-
-            // Only generate the summary if the feature is enabled
             if (_settings.value.enableAiSummary) {
-                generateSummary(article)
+                summaryJob = viewModelScope.launch {
+                    generateSummary(article)
+                }
             }
         } else {
-            // Better error handling when article not found
-            Log.e("NovascopeViewModel", "Article not found: $articleId")
-
-            // Set error state
             _uiState.update {
                 it.copy(
                     summaryState = SummaryState.Error("Article not found"),
@@ -526,31 +286,95 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // Helper method to check if model is imported
-    fun isModelImported(): Boolean {
-        return articleSummarizer.isModelImported
+    private suspend fun generateSummary(newsItem: NewsItem) {
+        _uiState.update { it.copy(summaryState = SummaryState.Loading) }
+
+        try {
+            if (!articleSummarizer.isModelImported) {
+                _uiState.update { it.copy(summaryState = SummaryState.ModelNotImported) }
+                return
+            }
+
+            withTimeoutOrNull(10000L) {
+                articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
+                    _uiState.update { it.copy(summaryState = summaryState) }
+                }
+            } ?: run {
+                val fallback = articleSummarizer.generateFallbackSummary(newsItem)
+                _uiState.update {
+                    it.copy(summaryState = SummaryState.Success(fallback))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ViewModel", "Error generating summary: ${e.message}")
+            try {
+                val fallback = articleSummarizer.generateFallbackSummary(newsItem)
+                _uiState.update {
+                    it.copy(summaryState = SummaryState.Success(fallback))
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
+                }
+            }
+        }
     }
 
-    // Update app settings
+    private suspend fun importModelFromUri(uri: Uri) {
+        importJob?.cancel()
+        importJob = viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(modelImportState = ModelFileManager.ImportState.Importing(0)) }
+
+                val progressJob = launch {
+                    articleSummarizer.importState.collect { state ->
+                        _uiState.update { it.copy(modelImportState = state) }
+                    }
+                }
+
+                val importResult = articleSummarizer.importModel(uri)
+                if (importResult && articleSummarizer.isModelImported) {
+                    withTimeoutOrNull(15000L) {
+                        articleSummarizer.initializeModel()
+                    }
+
+                    _uiState.value.selectedArticle?.let { article ->
+                        generateSummary(article)
+                    }
+                }
+
+                progressJob.cancel()
+            } catch (e: Exception) {
+                Log.e("ViewModel", "Error importing model: ${e.message}", e)
+                _uiState.update {
+                    it.copy(modelImportState = ModelFileManager.ImportState.Error(e.message ?: "Unknown error"))
+                }
+            }
+        }
+    }
+
+    fun cancelModelImport() {
+        importJob?.cancel()
+        viewModelScope.launch {
+            _uiState.update { it.copy(modelImportState = ModelFileManager.ImportState.Idle) }
+        }
+    }
+
+    fun isModelImported(): Boolean = articleSummarizer.isModelImported
+
     fun updateSettings(settings: AppSettings) {
         _settings.value = settings
     }
 
-    // Clean up resources
     override fun onCleared() {
         super.onCleared()
-        currentLoadJob?.cancel()
-        currentSummaryJob?.cancel()
-        currentImportJob?.cancel()
+        loadFeedsJob?.cancel()
+        summaryJob?.cancel()
+        importJob?.cancel()
         articleSummarizer.close()
-        articlesCache.clear()
-        lifecycleObserver = null
-        activity = null
-        filePickerCallback = null
     }
 }
 
-// Settings data class
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val useDynamicColor: Boolean = true,

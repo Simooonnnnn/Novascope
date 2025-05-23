@@ -28,6 +28,10 @@ import com.example.novascope.model.FeedCategory
 import com.example.novascope.ui.components.AddFeedDialog
 import com.example.novascope.viewmodel.NovascopeViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,7 +39,7 @@ fun ExploreScreen(
     viewModel: NovascopeViewModel,
     onNewsItemClick: (String) -> Unit = {}
 ) {
-    val feeds by viewModel.feeds.collectAsState()
+    val feeds by viewModel.feeds.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
 
     // Local UI states
@@ -249,7 +253,6 @@ fun FeedItem(
                             .data(feed.iconUrl)
                             .crossfade(true)
                             .size(72, 72)
-                            .placeholder(androidx.core.R.drawable.notification_bg)
                             .build(),
                         contentDescription = "Feed icon",
                         modifier = Modifier.fillMaxSize(),
