@@ -13,7 +13,6 @@ import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.PriorityQueue
 
 class ArticleSummarizer(private val context: Context) {
     companion object {
@@ -176,17 +175,22 @@ class ArticleSummarizer(private val context: Context) {
             Log.e(TAG, "Error summarizing article", e)
             // Always provide some kind of summary
             val fallback = generateFallbackSummary(newsItem)
-            emit(SummaryState.Success("$fallback"))
+            emit(SummaryState.Success(fallback))
         }
     }
 
     // Improve text preprocessing
     private fun preprocessText(text: String): String {
         return text
-            .take(500) // Take a shorter excerpt for better summarization
-            .replace("\n", " ")
-            .replace(Regex("\\s+"), " ")
             .replace(Regex("<[^>]*>"), "") // Remove HTML tags
+            .replace("&nbsp;", " ")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace(Regex("\\s+"), " ") // Normalize whitespace
+            .replace("\n", " ")
             .trim()
     }
 
@@ -194,43 +198,128 @@ class ArticleSummarizer(private val context: Context) {
     suspend fun generateFallbackSummary(newsItem: NewsItem): String {
         return withContext(Dispatchers.Default) {
             try {
-                val title = newsItem.title
+                val title = newsItem.title.trim()
                 val content = newsItem.content ?: ""
-                val preprocessedContent = preprocessText(content)
 
-                // If content is very short, just return it
-                if (preprocessedContent.length < 100) {
-                    return@withContext title
+                // If no content, just return a short version of the title
+                if (content.isBlank()) {
+                    return@withContext if (title.length > 100) {
+                        title.take(97) + "..."
+                    } else {
+                        title
+                    }
                 }
 
-                // Extract important sentences for summarization
-                val sentences = preprocessedContent.split(Regex("[.!?]+\\s+"))
-                    .filter { it.trim().length > 20 } // Filter out very short sentences
+                val preprocessedContent = preprocessText(content)
 
-                // If we have no good sentences, return the title
+                // If content is very short, create a simple summary
+                if (preprocessedContent.length < 150) {
+                    return@withContext if (preprocessedContent != title) {
+                        "$title - $preprocessedContent"
+                    } else {
+                        title
+                    }
+                }
+
+                // Split into sentences more reliably
+                val sentences = preprocessedContent
+                    .split(Regex("[.!?]+"))
+                    .map { it.trim() }
+                    .filter {
+                        it.isNotEmpty() &&
+                                it.length > 15 &&
+                                it.length < 300 &&
+                                !it.equals(title, ignoreCase = true) // Don't include the title as a sentence
+                    }
+
                 if (sentences.isEmpty()) {
                     return@withContext title
                 }
 
-                // Simple method: take the title and first 2-3 sentences
-                val numSentences = when {
-                    sentences.size <= 3 -> sentences.size
-                    else -> 3
+                // Score sentences based on importance
+                val scoredSentences = scoreSentences(sentences, title)
+
+                // Select top sentences for summary
+                val selectedSentences = selectBestSentences(scoredSentences, targetLength = 200)
+
+                if (selectedSentences.isEmpty()) {
+                    return@withContext title
                 }
 
-                val selectedSentences = sentences.take(numSentences)
+                // Create final summary
                 val summary = selectedSentences.joinToString(". ") + "."
 
-                // Ensure summary starts with the title
-                if (!summary.contains(title)) {
-                    "$title. $summary"
+                // Make sure summary is different from title and not too long
+                return@withContext if (summary.length > 300) {
+                    summary.take(297) + "..."
                 } else {
                     summary
                 }
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating fallback summary", e)
-                newsItem.title
+                return@withContext newsItem.title
             }
+        }
+    }
+
+    // Score sentences based on various factors
+    private fun scoreSentences(sentences: List<String>, title: String): List<Pair<String, Double>> {
+        val titleWords = title.lowercase().split(Regex("\\W+")).filter { it.length > 2 }.toSet()
+
+        return sentences.map { sentence ->
+            var score = 0.0
+            val sentenceWords = sentence.lowercase().split(Regex("\\W+")).filter { it.length > 2 }
+
+            // Score based on title word overlap
+            val titleOverlap = sentenceWords.count { it in titleWords }.toDouble() / titleWords.size
+            score += titleOverlap * 3.0
+
+            // Score based on sentence position (earlier sentences often more important)
+            val position = sentences.indexOf(sentence)
+            val positionScore = (sentences.size - position).toDouble() / sentences.size
+            score += positionScore * 1.0
+
+            // Score based on sentence length (prefer medium-length sentences)
+            val lengthScore = when {
+                sentence.length < 50 -> 0.5
+                sentence.length > 200 -> 0.7
+                else -> 1.0
+            }
+            score += lengthScore
+
+            // Boost score for sentences with important keywords
+            val importantWords = setOf("said", "says", "according", "reported", "announced", "revealed", "found", "discovered", "study", "analysis", "result", "concluded")
+            val keywordBoost = sentenceWords.count { it in importantWords } * 0.5
+            score += keywordBoost
+
+            // Penalize sentences that are questions or very short
+            if (sentence.endsWith("?")) score -= 0.5
+            if (sentence.length < 30) score -= 1.0
+
+            sentence to score
+        }
+    }
+
+    // Select the best sentences while keeping summary concise
+    private fun selectBestSentences(scoredSentences: List<Pair<String, Double>>, targetLength: Int): List<String> {
+        val sortedSentences = scoredSentences.sortedByDescending { it.second }
+        val selectedSentences = mutableListOf<String>()
+        var currentLength = 0
+
+        for ((sentence, _) in sortedSentences) {
+            if (currentLength + sentence.length <= targetLength || selectedSentences.isEmpty()) {
+                selectedSentences.add(sentence)
+                currentLength += sentence.length
+
+                // Stop at 3 sentences max for readability
+                if (selectedSentences.size >= 3) break
+            }
+        }
+
+        // Sort selected sentences back to their original order
+        return selectedSentences.sortedBy { sentence ->
+            scoredSentences.indexOfFirst { it.first == sentence }
         }
     }
 
