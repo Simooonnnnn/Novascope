@@ -21,6 +21,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import java.util.UUID
+import kotlin.random.Random
 
 class NovascopeViewModel(private val context: Context) : ViewModel() {
 
@@ -154,15 +155,14 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                     }.awaitAll().flatten()
                 }
 
-                // Process and update UI in one pass
-                val sortedItems = newsItems
+                // Process and update UI with randomized sorting
+                val sortedItems = randomizeNewsItems(newsItems)
                     .mapIndexed { index, item ->
                         item.copy(
                             isBookmarked = bookmarkedIds.contains(item.id),
                             isBigArticle = index == 0
                         )
                     }
-                    .sortedByDescending { it.publishTimeMillis }
 
                 val bookmarkedItems = sortedItems.filter { it.isBookmarked }
 
@@ -187,6 +187,42 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 }
             }
         }
+    }
+
+    /**
+     * Randomizes news items while still giving preference to newer articles
+     * Uses a weighted randomization based on recency
+     */
+    private fun randomizeNewsItems(items: List<NewsItem>): List<NewsItem> {
+        if (items.isEmpty()) return items
+
+        val currentTime = System.currentTimeMillis()
+        val maxAge = 7 * 24 * 60 * 60 * 1000L // 7 days in milliseconds
+
+        return items
+            .map { item ->
+                // Calculate age-based weight (newer articles get higher weight)
+                val age = currentTime - item.publishTimeMillis
+                val normalizedAge = (age.toDouble() / maxAge).coerceIn(0.0, 1.0)
+
+                // Weight formula: newer articles get higher weight + random factor
+                // Recent articles (within 6 hours) get extra boost
+                val isVeryRecent = age < (6 * 60 * 60 * 1000L) // 6 hours
+                val recencyBoost = if (isVeryRecent) 0.3 else 0.0
+
+                val weight = (1.0 - normalizedAge * 0.7) + recencyBoost + (Random.nextDouble() * 0.4)
+
+                item to weight
+            }
+            .sortedByDescending { it.second }
+            .map { it.first }
+    }
+
+    /**
+     * Refresh feeds (called by pull-to-refresh)
+     */
+    fun refreshFeeds() {
+        loadFeeds(forceRefresh = true)
     }
 
     fun toggleBookmark(newsItemId: String) {

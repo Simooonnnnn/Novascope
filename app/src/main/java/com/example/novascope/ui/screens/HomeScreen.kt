@@ -23,7 +23,8 @@ import com.example.novascope.model.NewsItem
 import com.example.novascope.ui.components.LargeNewsCard
 import com.example.novascope.ui.components.SmallNewsCard
 import com.example.novascope.viewmodel.NovascopeViewModel
-import kotlinx.coroutines.launch
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +35,11 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lazyListState = rememberLazyListState()
+
+    // Swipe refresh state
+    val swipeRefreshState = rememberSwipeRefreshState(
+        isRefreshing = uiState.isRefreshing
+    )
 
     // Load feeds only once when the screen is first shown
     LaunchedEffect(Unit) {
@@ -62,7 +68,9 @@ fun HomeScreen(
             )
         }
     ) { padding ->
-        Box(
+        SwipeRefresh(
+            state = swipeRefreshState,
+            onRefresh = { viewModel.refreshFeeds() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding())
@@ -73,7 +81,17 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator()
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Loading news...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
                 uiState.newsItems.isEmpty() && !uiState.isLoading -> {
@@ -82,7 +100,6 @@ fun HomeScreen(
                 else -> {
                     OptimizedNewsContent(
                         newsItems = uiState.newsItems,
-                        isRefreshing = uiState.isRefreshing,
                         errorMessage = uiState.errorMessage,
                         onNewsItemClick = onNewsItemClick,
                         onBookmarkClick = viewModel::toggleBookmark,
@@ -98,7 +115,6 @@ fun HomeScreen(
 @Composable
 private fun OptimizedNewsContent(
     newsItems: List<NewsItem>,
-    isRefreshing: Boolean,
     errorMessage: String?,
     onNewsItemClick: (String) -> Unit,
     onBookmarkClick: (String) -> Unit,
@@ -123,21 +139,6 @@ private fun OptimizedNewsContent(
                     fontWeight = FontWeight.Medium
                 )
             )
-        }
-
-        if (isRefreshing) {
-            item(key = "loading") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-            }
         }
 
         errorMessage?.let { error ->
@@ -182,6 +183,11 @@ private fun OptimizedNewsContent(
                 )
             }
         }
+
+        // Add some bottom spacing for better UX
+        item(key = "bottom_spacer") {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
     }
 }
 
@@ -214,6 +220,14 @@ fun EmptyFeedView(onAddFeedClick: () -> Unit) {
             text = "Add some RSS feeds to start reading news",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Pull down to refresh once you have feeds",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
