@@ -4,6 +4,10 @@ package com.example.novascope.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
@@ -31,10 +35,12 @@ import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 fun HomeScreen(
     viewModel: NovascopeViewModel,
     onNewsItemClick: (String) -> Unit = {},
-    onAddFeedClick: () -> Unit = {}
+    onAddFeedClick: () -> Unit = {},
+    useTabletLayout: Boolean = false
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lazyListState = rememberLazyListState()
+    val lazyGridState = rememberLazyGridState()
 
     // Swipe refresh state
     val swipeRefreshState = rememberSwipeRefreshState(
@@ -48,64 +54,130 @@ fun HomeScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
+    if (useTabletLayout) {
+        // Tablet layout with grid
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header for tablet
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, end = 24.dp, top = 64.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Image(
                         painter = painterResource(id = R.drawable.ic_novascope_logo),
                         contentDescription = "Novascope Logo",
                         modifier = Modifier
-                            .height(90.dp)
-                            .padding(vertical = 4.dp),
+                            .height(32.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                )
-            )
-        }
-    ) { padding ->
-        SwipeRefresh(
-            state = swipeRefreshState,
-            onRefresh = { viewModel.refreshFeeds() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = padding.calculateTopPadding())
-        ) {
-            when {
-                uiState.isLoading && uiState.newsItems.isEmpty() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
+                }
+            }
+
+            SwipeRefresh(
+                state = swipeRefreshState,
+                onRefresh = { viewModel.refreshFeeds() },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                when {
+                    uiState.isLoading && uiState.newsItems.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Loading news...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                CircularProgressIndicator()
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Loading news...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
+                    uiState.newsItems.isEmpty() && !uiState.isLoading -> {
+                        EmptyFeedView(onAddFeedClick)
+                    }
+                    else -> {
+                        TabletNewsContent(
+                            newsItems = uiState.newsItems,
+                            errorMessage = uiState.errorMessage,
+                            onNewsItemClick = onNewsItemClick,
+                            onBookmarkClick = viewModel::toggleBookmark,
+                            lazyGridState = lazyGridState
+                        )
+                    }
                 }
-                uiState.newsItems.isEmpty() && !uiState.isLoading -> {
-                    EmptyFeedView(onAddFeedClick)
-                }
-                else -> {
-                    OptimizedNewsContent(
-                        newsItems = uiState.newsItems,
-                        errorMessage = uiState.errorMessage,
-                        onNewsItemClick = onNewsItemClick,
-                        onBookmarkClick = viewModel::toggleBookmark,
-                        bottomPadding = padding.calculateBottomPadding(),
-                        lazyListState = lazyListState
+            }
+        }
+    } else {
+        // Phone layout with single column
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_novascope_logo),
+                            contentDescription = "Novascope Logo",
+                            modifier = Modifier
+                                .height(90.dp)
+                                .padding(vertical = 4.dp),
+                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground
                     )
+                )
+            }
+        ) { padding ->
+            SwipeRefresh(
+                state = swipeRefreshState,
+                onRefresh = { viewModel.refreshFeeds() },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = padding.calculateTopPadding())
+            ) {
+                when {
+                    uiState.isLoading && uiState.newsItems.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                CircularProgressIndicator()
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Loading news...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    uiState.newsItems.isEmpty() && !uiState.isLoading -> {
+                        EmptyFeedView(onAddFeedClick)
+                    }
+                    else -> {
+                        PhoneNewsContent(
+                            newsItems = uiState.newsItems,
+                            errorMessage = uiState.errorMessage,
+                            onNewsItemClick = onNewsItemClick,
+                            onBookmarkClick = viewModel::toggleBookmark,
+                            bottomPadding = padding.calculateBottomPadding(),
+                            lazyListState = lazyListState
+                        )
+                    }
                 }
             }
         }
@@ -113,7 +185,81 @@ fun HomeScreen(
 }
 
 @Composable
-private fun OptimizedNewsContent(
+private fun TabletNewsContent(
+    newsItems: List<NewsItem>,
+    errorMessage: String?,
+    onNewsItemClick: (String) -> Unit,
+    onBookmarkClick: (String) -> Unit,
+    lazyGridState: androidx.compose.foundation.lazy.grid.LazyGridState
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        state = lazyGridState,
+        contentPadding = PaddingValues(24.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+            Text(
+                text = "For You",
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.Medium
+                ),
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
+        errorMessage?.let { error ->
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+        }
+
+        // First item with large card spanning full width
+        if (newsItems.isNotEmpty()) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+                LargeNewsCard(
+                    newsItem = newsItems[0],
+                    onBookmarkClick = { onBookmarkClick(newsItems[0].id) },
+                    onCardClick = { onNewsItemClick(newsItems[0].id) }
+                )
+            }
+        }
+
+        // Remaining items in grid layout
+        items(
+            items = newsItems.drop(1), // Skip the first item as it's already shown
+            key = { it.id }
+        ) { item ->
+            SmallNewsCard(
+                newsItem = item,
+                onBookmarkClick = { onBookmarkClick(it.id) },
+                onCardClick = { onNewsItemClick(it.id) }
+            )
+        }
+
+        // Add some bottom spacing for better UX
+        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun PhoneNewsContent(
     newsItems: List<NewsItem>,
     errorMessage: String?,
     onNewsItemClick: (String) -> Unit,
