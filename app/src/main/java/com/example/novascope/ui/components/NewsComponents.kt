@@ -149,94 +149,102 @@ fun SmallNewsCard(
             pressedElevation = 1.dp
         )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Content column
-            Column(modifier = Modifier.weight(1f)) {
-                // Source row
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    newsItem.sourceIconUrl?.let { iconUrl ->
-                        AsyncImage(
-                            model = remember(iconUrl) {
-                                ImageRequest.Builder(context)
-                                    .data(iconUrl)
-                                    .crossfade(true)
-                                    .size(32, 32)
-                                    .build()
-                            },
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
+            // Image and Content section
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Content column
+                Column(modifier = Modifier.weight(1f)) {
+                    // Source row
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        newsItem.sourceIconUrl?.let { iconUrl ->
+                            AsyncImage(
+                                model = remember(iconUrl) {
+                                    ImageRequest.Builder(context)
+                                        .data(iconUrl)
+                                        .crossfade(true)
+                                        .size(32, 32)
+                                        .build()
+                                },
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+
+                        Text(
+                            text = newsItem.sourceName,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
                     }
 
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Text(
-                        text = newsItem.sourceName,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        text = newsItem.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.width(16.dp))
 
-                Text(
-                    text = newsItem.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Time and bookmark row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = newsItem.publishTime,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                // Article image
+                newsItem.imageUrl?.let { url ->
+                    AsyncImage(
+                        model = remember(url) {
+                            ImageRequest.Builder(context)
+                                .data(url)
+                                .crossfade(true)
+                                .size(200, 200)
+                                .build()
+                        },
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
                     )
-
-                    IconButton(
-                        onClick = remember(newsItem) { { onBookmarkClick(newsItem) } },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (newsItem.isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                            contentDescription = if (newsItem.isBookmarked) "Remove bookmark" else "Add bookmark",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
                 }
             }
 
-            // Article thumbnail
-            newsItem.imageUrl?.let { url ->
-                Spacer(modifier = Modifier.width(16.dp))
-                AsyncImage(
-                    model = remember(url) {
-                        ImageRequest.Builder(context)
-                            .data(url)
-                            .crossfade(true)
-                            .size(200, 200)
-                            .build()
-                    },
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Time and bookmark row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = newsItem.publishTime,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                IconButton(
+                    onClick = remember(newsItem) { { onBookmarkClick(newsItem) } },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = if (newsItem.isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = if (newsItem.isBookmarked) "Remove bookmark" else "Add bookmark",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }
 }
+
