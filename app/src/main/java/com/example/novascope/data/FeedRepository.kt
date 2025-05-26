@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/novascope/data/FeedRepository.kt
 package com.example.novascope.data
 
 import android.content.Context
@@ -145,26 +146,33 @@ class FeedRepository(private val context: Context) {
         }
     }
 
-    // Add default feeds with optimized execution
+    // Add default feeds with Swiss and tech focus
     private fun addDefaultFeeds() {
         val defaultFeeds = listOf(
-            // News - updated to use HTTPS
+            // Swiss News
             Feed(
-                name = "CNN Top Stories",
-                url = "https://rss.cnn.com/rss/cnn_topstories.rss", // Changed to HTTPS
+                name = "SRF News",
+                url = "https://www.srf.ch/bnf/rss/19920122",
                 category = FeedCategory.News,
-                iconUrl = "https://cdn.cnn.com/cnn/.e/img/3.0/global/misc/cnn-logo.png",
+                iconUrl = "https://www.srf.ch/shared/ressources/icons/touch-icons/apple-touch-icon-152x152.png",
                 isDefault = true
             ),
             Feed(
                 name = "BBC News",
-                url = "https://feeds.bbci.co.uk/news/rss.xml", // Changed to HTTPS
+                url = "https://feeds.bbci.co.uk/news/rss.xml",
                 category = FeedCategory.News,
                 iconUrl = "https://news.bbcimg.co.uk/nol/shared/img/bbc_news_120x60.gif",
                 isDefault = true
             ),
 
             // Technology
+            Feed(
+                name = "Digitec",
+                url = "https://static.digitecgalaxus.ch/feeds/rss/digitec_CH_en.xml",
+                category = FeedCategory.Tech,
+                iconUrl = "https://static.digitecgalaxus.ch/web/assets/images/apple-touch-icon-152x152.png",
+                isDefault = true
+            ),
             Feed(
                 name = "The Verge",
                 url = "https://www.theverge.com/rss/index.xml",
@@ -182,13 +190,6 @@ class FeedRepository(private val context: Context) {
 
             // Science
             Feed(
-                name = "Scientific American",
-                url = "https://rss.sciam.com/ScientificAmerican-Global",
-                category = FeedCategory.Science,
-                iconUrl = "https://static.scientificamerican.com/sciam/cache/file/15E43C18-0CBC-4EAD-96C4E8F8CA0C0AB4_source.png",
-                isDefault = true
-            ),
-            Feed(
                 name = "NASA News",
                 url = "https://www.nasa.gov/feed/",
                 category = FeedCategory.Science,
@@ -202,15 +203,6 @@ class FeedRepository(private val context: Context) {
                 url = "https://feeds.bloomberg.com/markets/news.rss",
                 category = FeedCategory.Finance,
                 iconUrl = "https://assets.bwbx.io/s3/javelin/public/javelin/images/bloomberg-logo-new-2x-default-_e9e82cea1f.png",
-                isDefault = true
-            ),
-
-            // Sports
-            Feed(
-                name = "ESPN",
-                url = "https://www.espn.com/espn/rss/news",
-                category = FeedCategory.Sports,
-                iconUrl = "https://a.espncdn.com/i/espn/teamlogos/lrg/trans/espn_dotcom_black.gif",
                 isDefault = true
             )
         )

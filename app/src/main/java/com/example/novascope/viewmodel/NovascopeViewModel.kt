@@ -112,6 +112,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         modelFilePickerLauncher?.launch("*/*")
     }
 
+
     fun loadFeeds(forceRefresh: Boolean = false) {
         loadFeedsJob?.cancel()
         loadFeedsJob = viewModelScope.launch {
@@ -129,42 +130,69 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 }
 
                 val enabledFeeds = feedRepository.getEnabledFeeds()
+                Log.d("ViewModel", "Loading ${enabledFeeds.size} enabled feeds")
+
                 if (enabledFeeds.isEmpty()) {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             isRefreshing = false,
-                            newsItems = emptyList()
+                            newsItems = emptyList(),
+                            errorMessage = "No RSS feeds configured. Go to Explore to add some feeds."
                         )
                     }
                     return@launch
                 }
 
-                // Process feeds in parallel with structured concurrency
-                val newsItems = coroutineScope {
+                // Process feeds in parallel with better error handling
+                val feedResults = coroutineScope {
                     enabledFeeds.map { feed ->
                         async(Dispatchers.IO) {
                             try {
-                                rssService.fetchFeed(feed.url, forceRefresh)
-                                    .map { it.copy(feedId = feed.id) }
+                                Log.d("ViewModel", "Fetching feed: ${feed.name} (${feed.url})")
+                                val items = rssService.fetchFeed(feed.url, forceRefresh)
+                                Log.d("ViewModel", "Feed ${feed.name} returned ${items.size} items")
+
+                                FeedResult.Success(
+                                    feed = feed,
+                                    items = items.map { it.copy(feedId = feed.id) }
+                                )
                             } catch (e: Exception) {
-                                Log.e("ViewModel", "Error loading feed ${feed.name}: ${e.message}")
-                                emptyList()
+                                Log.e("ViewModel", "Error loading feed ${feed.name}: ${e.message}", e)
+                                FeedResult.Error(feed = feed, error = e.message ?: "Unknown error")
                             }
                         }
-                    }.awaitAll().flatten()
+                    }.awaitAll()
                 }
 
-                // Process and update UI with randomized sorting
-                val sortedItems = randomizeNewsItems(newsItems)
-                    .mapIndexed { index, item ->
-                        item.copy(
-                            isBookmarked = bookmarkedIds.contains(item.id),
-                            isBigArticle = index == 0
-                        )
-                    }
+                // Separate successful results from errors
+                val successfulResults = feedResults.filterIsInstance<FeedResult.Success>()
+                val errorResults = feedResults.filterIsInstance<FeedResult.Error>()
+
+                // Collect all news items from successful feeds
+                val allNewsItems = successfulResults.flatMap { it.items }
+                Log.d("ViewModel", "Total items collected: ${allNewsItems.size}")
+
+                // Process and update UI with improved sorting
+                val sortedItems = if (allNewsItems.isNotEmpty()) {
+                    smartSortNewsItems(allNewsItems)
+                        .mapIndexed { index, item ->
+                            item.copy(
+                                isBookmarked = bookmarkedIds.contains(item.id),
+                                isBigArticle = index == 0
+                            )
+                        }
+                } else {
+                    emptyList()
+                }
 
                 val bookmarkedItems = sortedItems.filter { it.isBookmarked }
+
+                // Prepare error message if some feeds failed
+                val errorMessage = if (errorResults.isNotEmpty()) {
+                    val failedFeeds = errorResults.map { it.feed.name }
+                    "Some feeds failed to load: ${failedFeeds.joinToString(", ")}"
+                } else null
 
                 _uiState.update {
                     it.copy(
@@ -172,12 +200,14 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                         isRefreshing = false,
                         newsItems = sortedItems,
                         bookmarkedItems = bookmarkedItems,
-                        errorMessage = null
+                        errorMessage = errorMessage
                     )
                 }
 
+                Log.d("ViewModel", "Feed loading completed. ${sortedItems.size} items loaded.")
+
             } catch (e: Exception) {
-                Log.e("ViewModel", "Error loading feeds: ${e.message}")
+                Log.e("ViewModel", "Error loading feeds: ${e.message}", e)
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -187,6 +217,55 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 }
             }
         }
+    }
+
+    /**
+     * Improved news sorting that balances recency with diversity
+     */
+    private fun smartSortNewsItems(items: List<NewsItem>): List<NewsItem> {
+        if (items.isEmpty()) return items
+
+        val currentTime = System.currentTimeMillis()
+        val maxAge = 7 * 24 * 60 * 60 * 1000L // 7 days in milliseconds
+
+        // Group items by feed to ensure diversity
+        val itemsByFeed = items.groupBy { it.feedId }
+        val sortedItems = mutableListOf<NewsItem>()
+
+        // First, add the most recent item from each feed to ensure diversity
+        itemsByFeed.values.forEach { feedItems ->
+            val mostRecent = feedItems.maxByOrNull { it.publishTimeMillis }
+            mostRecent?.let { sortedItems.add(it) }
+        }
+
+        // Then add remaining items with weighted randomization
+        val remainingItems = items.filter { item ->
+            !sortedItems.any { it.id == item.id }
+        }.map { item ->
+            // Calculate age-based weight (newer articles get higher weight)
+            val age = currentTime - item.publishTimeMillis
+            val normalizedAge = (age.toDouble() / maxAge).coerceIn(0.0, 1.0)
+
+            // Weight formula: newer articles get higher weight + random factor
+            val isVeryRecent = age < (6 * 60 * 60 * 1000L) // 6 hours
+            val recencyBoost = if (isVeryRecent) 0.3 else 0.0
+
+            val weight = (1.0 - normalizedAge * 0.7) + recencyBoost + (kotlin.random.Random.nextDouble() * 0.4)
+
+            item to weight
+        }.sortedByDescending { it.second }
+            .map { it.first }
+
+        // Combine the lists: recent items from each feed first, then weighted remaining items
+        sortedItems.addAll(remainingItems)
+
+        return sortedItems.distinctBy { it.id } // Remove any duplicates
+    }
+
+    // Helper class to handle feed loading results
+    private sealed class FeedResult {
+        data class Success(val feed: Feed, val items: List<NewsItem>) : FeedResult()
+        data class Error(val feed: Feed, val error: String) : FeedResult()
     }
 
     /**
