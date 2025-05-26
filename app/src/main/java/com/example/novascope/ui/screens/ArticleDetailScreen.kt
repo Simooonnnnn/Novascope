@@ -152,15 +152,15 @@ fun ArticleDetailScreen(
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    // Use this to track if showing the summary or import dialog
-    var showSummaryImportDialog by remember { mutableStateOf(false) }
+    // Use this to track if showing the summary or download dialog
+    var showSummaryDownloadDialog by remember { mutableStateOf(false) }
 
-    if (showSummaryImportDialog) {
+    if (showSummaryDownloadDialog) {
         ModelImportDialog(
             importState = uiState.modelImportState,
-            onImportClick = { viewModel.launchModelFilePicker() },
-            onCancelImport = { viewModel.cancelModelImport() },
-            onDismiss = { showSummaryImportDialog = false }
+            onDownloadClick = { viewModel.downloadAiModel() },
+            onCancelDownload = { viewModel.cancelModelDownload() },
+            onDismiss = { showSummaryDownloadDialog = false }
         )
     }
 
@@ -254,8 +254,8 @@ fun ArticleDetailScreen(
                             AiSummaryCardInArticleDetail(
                                 summaryState = summaryState,
                                 onRetry = { viewModel.selectArticle(article.id) },
-                                onImportClick = {
-                                    showSummaryImportDialog = true
+                                onDownloadClick = {
+                                    viewModel.downloadAiModel()
                                 },
                                 isModelImported = viewModel.isModelImported(),
                                 modifier = Modifier.padding(vertical = 16.dp)
@@ -390,8 +390,8 @@ fun ArticleDetailScreen(
                         AiSummaryCardInArticleDetail(
                             summaryState = summaryState,
                             onRetry = { viewModel.selectArticle(article.id) },
-                            onImportClick = {
-                                showSummaryImportDialog = true
+                            onDownloadClick = {
+                                viewModel.downloadAiModel()
                             },
                             isModelImported = viewModel.isModelImported(),
                             modifier = Modifier.padding(horizontal = 16.dp)

@@ -13,23 +13,29 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 
 class ModelFileManager(private val context: Context) {
 
     companion object {
         private const val TAG = "ModelFileManager"
-        const val MODEL_FILE = "smollm2_article_summarizer.gguf"
-        const val VOCAB_FILE = "smollm2_vocab.txt"
+        const val MODEL_FILE = "t5_small_summarizer.tflite"
+        const val VOCAB_FILE = "t5_vocab.txt"
 
-        // Required space for a typical GGUF file
-        private const val MIN_REQUIRED_SPACE = 100 * 1024 * 1024L // 100MB
+        // T5-small model optimized for mobile (quantized)
+        private const val MODEL_URL = "https://tfhub.dev/tensorflow/lite-model/t5-small/1?lite-format=tflite"
+        // Alternative: Use a direct URL to a pre-converted model
+        // private const val MODEL_URL = "https://github.com/tensorflow/text/releases/download/v2.8.1/t5_small_summarizer.tflite"
+
+        // Required space for T5-small model (~25MB)
+        private const val MIN_REQUIRED_SPACE = 50 * 1024 * 1024L // 50MB
     }
 
     private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
     val importState: StateFlow<ImportState> = _importState.asStateFlow()
 
-    // Flag to track if an import is in progress
-    private var isImporting = false
+    private var isDownloading = false
 
     val isModelImported: Boolean
         get() {
@@ -39,202 +45,258 @@ class ModelFileManager(private val context: Context) {
         }
 
     /**
-     * Import a model file from a URI
+     * Automatically download T5 model if not present
      */
-    suspend fun importModel(uri: Uri): Boolean {
+    suspend fun downloadModelIfNeeded(): Boolean {
         if (isModelImported) {
             _importState.value = ImportState.Success
             return true
         }
 
-        // Check if already importing
-        if (isImporting) {
-            Log.d(TAG, "Import already in progress")
+        if (isDownloading) {
+            Log.d(TAG, "Download already in progress")
             return false
         }
 
         // Check available storage space
         if (!hasEnoughSpace()) {
-            _importState.value = ImportState.Error("Not enough storage space. Free up at least 100MB and try again.")
+            _importState.value = ImportState.Error("Not enough storage space. Free up at least 50MB and try again.")
             return false
         }
 
-        isImporting = true
+        isDownloading = true
         _importState.value = ImportState.Importing(0)
 
         try {
-            // Create directory if needed
-            val assetsDir = File(context.filesDir, "assets")
-            if (!assetsDir.exists()) {
-                assetsDir.mkdirs()
-            }
+            Log.d(TAG, "Starting automatic T5 model download...")
 
             // Set up destination files
             val modelFile = File(context.filesDir, MODEL_FILE)
             val vocabFile = File(context.filesDir, VOCAB_FILE)
 
-            // Log attempt to import
-            Log.d(TAG, "Attempting to import model from URI: $uri")
-
-            // Copy the file from URI to internal storage
-            val success = copyFileFromUri(uri, modelFile)
+            // Download the T5 model
+            val success = downloadModelFromUrl(MODEL_URL, modelFile)
             if (!success) {
-                throw IOException("Failed to copy file from URI")
+                throw IOException("Failed to download T5 model")
             }
 
-            // Add a simple placeholder vocabulary file
-            createPlaceholderVocabFile(vocabFile)
-            _importState.value = ImportState.Importing(100) // Complete
+            // Create T5 vocabulary file
+            createT5VocabFile(vocabFile)
+            _importState.value = ImportState.Importing(100)
 
-            // Final check to ensure files were imported properly
+            // Final verification
             if (modelFile.exists() && modelFile.length() > 0 &&
                 vocabFile.exists() && vocabFile.length() > 0) {
                 _importState.value = ImportState.Success
-                Log.d(TAG, "Model import successful: ${modelFile.length()} bytes")
+                Log.d(TAG, "T5 model download successful: ${modelFile.length()} bytes")
                 return true
             } else {
-                throw IOException("Imported files are invalid or empty")
+                throw IOException("Downloaded files are invalid or empty")
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error importing model: ${e.message}", e)
-            _importState.value = ImportState.Error("Import failed: ${e.message ?: "Unknown error"}")
-            // Delete partial files
-            cleanupPartialImports()
+            Log.e(TAG, "Error downloading T5 model: ${e.message}", e)
+            _importState.value = ImportState.Error("Download failed: ${e.message ?: "Unknown error"}")
+            cleanupPartialDownloads()
             return false
         } finally {
-            isImporting = false
+            isDownloading = false
         }
     }
 
     /**
-     * Copy file from URI to destination
+     * Download model from URL with progress tracking
      */
-    private suspend fun copyFileFromUri(uri: Uri, destination: File): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun downloadModelFromUrl(url: String, destination: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                FileOutputStream(destination).use { outputStream ->
+            Log.d(TAG, "Downloading from: $url")
+
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 30000
+            connection.readTimeout = 60000
+            connection.connect()
+
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                Log.e(TAG, "HTTP error: ${connection.responseCode}")
+                return@withContext false
+            }
+
+            val fileSize = connection.contentLength
+            Log.d(TAG, "Model size: ${fileSize / 1024 / 1024}MB")
+
+            connection.inputStream.use { input ->
+                FileOutputStream(destination).use { output ->
                     val buffer = ByteArray(8192)
                     var bytesRead: Int
                     var totalBytesRead = 0L
                     var lastProgressUpdate = 0
 
-                    // Get input stream size if possible
-                    val fileSize = try {
-                        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                            if (cursor.moveToFirst()) {
-                                val sizeIndex = cursor.getColumnIndex("_size")
-                                if (sizeIndex != -1) cursor.getLong(sizeIndex) else -1L
-                            } else -1L
-                        } ?: -1L
-                    } catch (e: Exception) {
-                        -1L
-                    }
-
-                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                        outputStream.write(buffer, 0, bytesRead)
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
                         totalBytesRead += bytesRead
 
-                        // Calculate progress
+                        // Update progress
                         val progress = if (fileSize > 0) {
                             (totalBytesRead * 100 / fileSize).toInt()
                         } else {
-                            // If file size is unknown, use a dummy progress indicator
-                            (totalBytesRead / 1024 / 10).toInt().coerceAtMost(99)
+                            (totalBytesRead / 1024 / 100).toInt().coerceAtMost(99)
                         }
 
-                        // Only update progress if it changed significantly (reduces UI updates)
-                        if (progress - lastProgressUpdate >= 1 || progress == 100) {
+                        if (progress - lastProgressUpdate >= 5) {
                             _importState.value = ImportState.Importing(progress)
                             lastProgressUpdate = progress
-                            Log.d(TAG, "Import progress: $progress% ($totalBytesRead bytes)")
+                            Log.d(TAG, "Download progress: $progress% (${totalBytesRead / 1024 / 1024}MB)")
                         }
                     }
                 }
-            } ?: throw IOException("Could not open input stream for URI")
+            }
+
+            connection.disconnect()
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error copying file: ${e.message}", e)
+            Log.e(TAG, "Error downloading model: ${e.message}", e)
             false
         }
     }
 
-    // Create a simple vocabulary file as a fallback
-    private fun createPlaceholderVocabFile(vocabFile: File) {
+    /**
+     * Create T5-specific vocabulary file
+     */
+    private fun createT5VocabFile(vocabFile: File) {
         try {
             vocabFile.createNewFile()
+            // T5 uses SentencePiece tokenization, but for simplicity we'll create a basic vocab
+            // In a production app, you'd want to include the actual T5 vocabulary
             vocabFile.writeText("""
+                <pad>
+                </s>
                 <unk>
                 <s>
-                </s>
-                <pad>
+                summarize:
+                article
+                news
+                text
                 the
                 a
                 an
                 is
                 was
-                to
-                of
-                in
-                and
-                for
-                on
-                at
-                with
-                by
-                from
-                about
-                that
-                it
-                as
-                this
-                which
-                but
-                or
-                not
+                are
+                were
+                be
+                been
                 have
                 has
                 had
-                are
-                be
-                been
+                do
+                does
+                did
                 will
                 would
-                can
                 could
+                should
                 may
                 might
-                should
+                can
                 must
-                their
-                there
-                they
-                them
-                he
-                him
-                his
-                she
-                her
-                hers
-                you
-                your
-                yours
-                we
-                us
-                our
-                ours
+                this
+                that
+                these
+                those
                 i
+                you
+                he
+                she
+                it
+                we
+                they
                 me
+                him
+                her
+                us
+                them
                 my
+                your
+                his
+                her
+                its
+                our
+                their
                 mine
+                yours
+                hers
+                ours
+                theirs
+                what
+                which
+                who
+                whom
+                whose
+                where
+                when
+                why
+                how
+                and
+                or
+                but
+                so
+                if
+                because
+                although
+                though
+                while
+                since
+                after
+                before
+                during
+                for
+                in
+                on
+                at
+                by
+                with
+                from
+                to
+                of
+                about
+                over
+                under
+                through
+                between
+                among
+                against
+                without
+                within
+                .
+                ,
+                !
+                ?
+                :
+                ;
+                "
+                '
+                (
+                )
+                [
+                ]
+                {
+                }
             """.trimIndent())
-            Log.d(TAG, "Created placeholder vocabulary file")
+            Log.d(TAG, "Created T5 vocabulary file")
         } catch (e: Exception) {
-            Log.e(TAG, "Error creating placeholder vocab file", e)
+            Log.e(TAG, "Error creating T5 vocab file", e)
         }
     }
 
-    private fun cleanupPartialImports() {
+    /**
+     * Legacy method for manual import (now redirects to automatic download)
+     */
+    suspend fun importModel(uri: Uri): Boolean {
+        return downloadModelIfNeeded()
+    }
+
+    private fun cleanupPartialDownloads() {
         try {
             val modelFile = File(context.filesDir, MODEL_FILE)
             val vocabFile = File(context.filesDir, VOCAB_FILE)
@@ -247,16 +309,16 @@ class ModelFileManager(private val context: Context) {
                 vocabFile.delete()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error cleaning up partial imports", e)
+            Log.e(TAG, "Error cleaning up partial downloads", e)
         }
     }
 
-    // Cancel the current import
-    fun cancelImport() {
-        Log.d(TAG, "Cancelling model import")
-        isImporting = false
+    // Cancel the current download
+    fun cancelDownload() {
+        Log.d(TAG, "Cancelling model download")
+        isDownloading = false
         _importState.value = ImportState.Idle
-        cleanupPartialImports()
+        cleanupPartialDownloads()
     }
 
     // Check if there's enough space available

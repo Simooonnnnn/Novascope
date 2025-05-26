@@ -33,7 +33,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     // Job management
     private var loadFeedsJob: Job? = null
     private var summaryJob: Job? = null
-    private var importJob: Job? = null
+    private var modelInitJob: Job? = null
 
     // UI state
     data class UiState(
@@ -64,9 +64,8 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     // Bookmarked IDs for faster lookup
     private val bookmarkedIds = mutableSetOf<String>()
 
-    // Activity for file picking
+    // Activity reference (no longer needed for file picker but kept for compatibility)
     private var activity: ComponentActivity? = null
-    private var modelFilePickerLauncher: ActivityResultLauncher<String>? = null
 
     init {
         // Initialize feeds
@@ -79,39 +78,96 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
             }
         }
 
-        // Initialize AI model in background
-        viewModelScope.launch(Dispatchers.IO) {
+        // Initialize AI model in background with automatic download
+        initializeAiModelInBackground()
+
+        // Monitor model import state
+        viewModelScope.launch {
+            articleSummarizer.importState.collect { state ->
+                _uiState.update { it.copy(modelImportState = state) }
+            }
+        }
+    }
+
+    /**
+     * Initialize AI model in background with automatic download
+     */
+    private fun initializeAiModelInBackground() {
+        modelInitJob?.cancel()
+        modelInitJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                withTimeoutOrNull(5000L) {
+                Log.d("ViewModel", "Starting AI model initialization")
+
+                // Attempt to initialize the model (will auto-download if needed)
+                withTimeoutOrNull(30000L) { // 30 second timeout
                     articleSummarizer.initializeModel()
                 }
+
+                Log.d("ViewModel", "AI model initialization completed")
             } catch (e: Exception) {
-                Log.e("ViewModel", "Error initializing AI model: ${e.message}")
+                Log.e("ViewModel", "Error initializing AI model: ${e.message}", e)
             }
         }
     }
 
     fun registerActivity(activity: ComponentActivity) {
         this.activity = activity
-        modelFilePickerLauncher = activity.registerForActivityResult(
-            ActivityResultContracts.GetContent()
-        ) { uri ->
-            uri?.let {
-                viewModelScope.launch {
-                    importModelFromUri(it)
-                }
-            }
-        }
+        // No longer need file picker launcher for automatic T5 download
     }
 
     fun unregisterActivity() {
         activity = null
     }
 
-    fun launchModelFilePicker() {
-        modelFilePickerLauncher?.launch("*/*")
+    /**
+     * Trigger T5 model download
+     */
+    fun downloadAiModel() {
+        modelInitJob?.cancel()
+        modelInitJob = viewModelScope.launch {
+            try {
+                Log.d("ViewModel", "Starting T5 model download")
+                _uiState.update { it.copy(modelImportState = ModelFileManager.ImportState.Importing(0)) }
+
+                val success = articleSummarizer.initializeModel()
+                if (success) {
+                    Log.d("ViewModel", "T5 model download and initialization successful")
+
+                    // If there's a selected article, generate summary
+                    _uiState.value.selectedArticle?.let { article ->
+                        generateSummary(article)
+                    }
+                } else {
+                    Log.e("ViewModel", "T5 model download failed")
+                    _uiState.update {
+                        it.copy(modelImportState = ModelFileManager.ImportState.Error("Failed to download T5 model"))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ViewModel", "Error downloading T5 model: ${e.message}", e)
+                _uiState.update {
+                    it.copy(modelImportState = ModelFileManager.ImportState.Error(e.message ?: "Unknown error"))
+                }
+            }
+        }
     }
 
+    /**
+     * Cancel model download
+     */
+    fun cancelModelDownload() {
+        modelInitJob?.cancel()
+        viewModelScope.launch {
+            _uiState.update { it.copy(modelImportState = ModelFileManager.ImportState.Idle) }
+        }
+    }
+
+    /**
+     * Legacy method for compatibility - now triggers automatic download
+     */
+    fun launchModelFilePicker() {
+        downloadAiModel()
+    }
 
     fun loadFeeds(forceRefresh: Boolean = false) {
         loadFeedsJob?.cancel()
@@ -269,35 +325,6 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     }
 
     /**
-     * Randomizes news items while still giving preference to newer articles
-     * Uses a weighted randomization based on recency
-     */
-    private fun randomizeNewsItems(items: List<NewsItem>): List<NewsItem> {
-        if (items.isEmpty()) return items
-
-        val currentTime = System.currentTimeMillis()
-        val maxAge = 7 * 24 * 60 * 60 * 1000L // 7 days in milliseconds
-
-        return items
-            .map { item ->
-                // Calculate age-based weight (newer articles get higher weight)
-                val age = currentTime - item.publishTimeMillis
-                val normalizedAge = (age.toDouble() / maxAge).coerceIn(0.0, 1.0)
-
-                // Weight formula: newer articles get higher weight + random factor
-                // Recent articles (within 6 hours) get extra boost
-                val isVeryRecent = age < (6 * 60 * 60 * 1000L) // 6 hours
-                val recencyBoost = if (isVeryRecent) 0.3 else 0.0
-
-                val weight = (1.0 - normalizedAge * 0.7) + recencyBoost + (Random.nextDouble() * 0.4)
-
-                item to weight
-            }
-            .sortedByDescending { it.second }
-            .map { it.first }
-    }
-
-    /**
      * Refresh feeds (called by pull-to-refresh)
      */
     fun refreshFeeds() {
@@ -406,15 +433,17 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
 
         try {
             if (!articleSummarizer.isModelImported) {
+                Log.d("ViewModel", "T5 model not available, showing ModelNotImported state")
                 _uiState.update { it.copy(summaryState = SummaryState.ModelNotImported) }
                 return
             }
 
-            withTimeoutOrNull(10000L) {
+            withTimeoutOrNull(15000L) { // Increased timeout for T5 inference
                 articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
                     _uiState.update { it.copy(summaryState = summaryState) }
                 }
             } ?: run {
+                // Fallback to extractive summarization on timeout
                 val fallback = articleSummarizer.generateFallbackSummary(newsItem)
                 _uiState.update {
                     it.copy(summaryState = SummaryState.Success(fallback))
@@ -435,44 +464,15 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
+    /**
+     * Legacy method - now triggers automatic download
+     */
     private suspend fun importModelFromUri(uri: Uri) {
-        importJob?.cancel()
-        importJob = viewModelScope.launch {
-            try {
-                _uiState.update { it.copy(modelImportState = ModelFileManager.ImportState.Importing(0)) }
-
-                val progressJob = launch {
-                    articleSummarizer.importState.collect { state ->
-                        _uiState.update { it.copy(modelImportState = state) }
-                    }
-                }
-
-                val importResult = articleSummarizer.importModel(uri)
-                if (importResult && articleSummarizer.isModelImported) {
-                    withTimeoutOrNull(15000L) {
-                        articleSummarizer.initializeModel()
-                    }
-
-                    _uiState.value.selectedArticle?.let { article ->
-                        generateSummary(article)
-                    }
-                }
-
-                progressJob.cancel()
-            } catch (e: Exception) {
-                Log.e("ViewModel", "Error importing model: ${e.message}", e)
-                _uiState.update {
-                    it.copy(modelImportState = ModelFileManager.ImportState.Error(e.message ?: "Unknown error"))
-                }
-            }
-        }
+        downloadAiModel()
     }
 
     fun cancelModelImport() {
-        importJob?.cancel()
-        viewModelScope.launch {
-            _uiState.update { it.copy(modelImportState = ModelFileManager.ImportState.Idle) }
-        }
+        cancelModelDownload()
     }
 
     fun isModelImported(): Boolean = articleSummarizer.isModelImported
@@ -485,7 +485,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         super.onCleared()
         loadFeedsJob?.cancel()
         summaryJob?.cancel()
-        importJob?.cancel()
+        modelInitJob?.cancel()
         articleSummarizer.close()
     }
 }
