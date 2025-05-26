@@ -10,6 +10,16 @@ android {
     namespace = "com.example.novascope"
     compileSdk = 34
 
+    kotlinOptions { // First kotlinOptions block
+        jvmTarget = "1.8" // Or your desired JVM target
+        freeCompilerArgs += "-Xlambdas=indy" // Or legacy, depending on your setup
+        freeCompilerArgs += "-Xallow-unstable-dependencies" // If needed for other dependencies
+        freeCompilerArgs += "-Xexperimental=kotlin.ExperimentalStdlibApi" // If using other experimental APIs
+        // Add this line to enable the feature:
+        freeCompilerArgs += "-Xbreak-continue-in-inline-lambdas"
+    } // This closing brace might be the one the compiler expects earlier if the structure is wrong.
+
+
     defaultConfig {
         applicationId = "com.example.novascope"
         minSdk = 26
@@ -35,9 +45,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = "1.8"
+    
     }
     buildFeatures {
         compose = true
