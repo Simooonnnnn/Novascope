@@ -127,9 +127,20 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         modelInitJob = viewModelScope.launch {
             try {
                 Log.d("ViewModel", "Starting T5 model download")
+
+                // Update UI state immediately to show download starting
                 _uiState.update { it.copy(modelImportState = ModelFileManager.ImportState.Importing(0)) }
 
+                // Start monitoring the import state from the summarizer
+                val progressJob = launch {
+                    articleSummarizer.importState.collect { state ->
+                        Log.d("ViewModel", "Import state update: $state")
+                        _uiState.update { it.copy(modelImportState = state) }
+                    }
+                }
+
                 val success = articleSummarizer.initializeModel()
+
                 if (success) {
                     Log.d("ViewModel", "T5 model download and initialization successful")
 
@@ -143,6 +154,9 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                         it.copy(modelImportState = ModelFileManager.ImportState.Error("Failed to download T5 model"))
                     }
                 }
+
+                progressJob.cancel()
+
             } catch (e: Exception) {
                 Log.e("ViewModel", "Error downloading T5 model: ${e.message}", e)
                 _uiState.update {

@@ -1,6 +1,7 @@
 // app/src/main/java/com/example/novascope/ui/components/AiSummaryCardInArticleDetail.kt
 package com.example.novascope.ui.components
 
+import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -227,7 +228,10 @@ fun AiSummaryCardInArticleDetail(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
-                            onClick = { showDownloadDialog = true },
+                            onClick = {
+                                Log.d("AiSummaryCard", "Download AI Model button clicked")
+                                showDownloadDialog = true
+                            },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             )

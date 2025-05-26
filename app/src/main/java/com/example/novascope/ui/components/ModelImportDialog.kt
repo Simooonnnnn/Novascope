@@ -1,6 +1,7 @@
 // app/src/main/java/com/example/novascope/ui/components/ModelImportDialog.kt
 package com.example.novascope.ui.components
 
+import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -69,7 +70,10 @@ fun ModelImportDialog(
                 when (importState) {
                     is ModelFileManager.ImportState.Idle -> {
                         Button(
-                            onClick = onDownloadClick,
+                            onClick = {
+                                Log.d("ModelImportDialog", "Download AI Model button clicked in dialog")
+                                onDownloadClick()
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(

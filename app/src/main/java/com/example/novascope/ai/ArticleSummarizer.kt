@@ -54,8 +54,11 @@ class ArticleSummarizer(private val context: Context) {
                 return@withContext true
             }
 
-            // Auto-download model if needed
-            if (!fileManager.downloadModelIfNeeded()) {
+            Log.d(TAG, "Starting T5 model initialization...")
+
+            // Auto-download model if needed (this will update the import state)
+            val downloadSuccess = fileManager.downloadModelIfNeeded()
+            if (!downloadSuccess) {
                 Log.e(TAG, "Failed to download T5 model")
                 return@withContext false
             }
