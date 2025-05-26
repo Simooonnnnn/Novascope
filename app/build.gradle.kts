@@ -10,15 +10,15 @@ android {
     namespace = "com.example.novascope"
     compileSdk = 34
 
-    kotlinOptions { // First kotlinOptions block
-        jvmTarget = "1.8" // Or your desired JVM target
-        freeCompilerArgs += "-Xlambdas=indy" // Or legacy, depending on your setup
-        freeCompilerArgs += "-Xallow-unstable-dependencies" // If needed for other dependencies
-        freeCompilerArgs += "-Xexperimental=kotlin.ExperimentalStdlibApi" // If using other experimental APIs
-        // Add this line to enable the feature:
-        freeCompilerArgs += "-Xbreak-continue-in-inline-lambdas"
-    } // This closing brace might be the one the compiler expects earlier if the structure is wrong.
-
+    kotlinOptions {
+        jvmTarget = "1.8"
+        freeCompilerArgs += listOf(
+            "-Xlambdas=indy",
+            "-Xallow-unstable-dependencies",
+            "-Xexperimental=kotlin.ExperimentalStdlibApi",
+            "-Xbreak-continue-in-inline-lambdas"
+        )
+    }
 
     defaultConfig {
         applicationId = "com.example.novascope"
@@ -42,44 +42,25 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
-    
     }
+
     buildFeatures {
         compose = true
     }
+
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.10"
     }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
-
-    // Add this to download the model automatically during build
-    // (would be implemented in a real production app)
-    /*
-    sourceSets {
-        getByName("main") {
-            assets {
-                srcDirs("src/main/assets")
-            }
-        }
-    }
-
-    tasks.register<DownloadModelTask>("downloadSmolLMModel") {
-        outputDir = file("src/main/assets")
-        modelUrl = "https://huggingface.co/HuggingFaceTB/SmolLM2-135M/resolve/main/model_optimized.tflite"
-        modelName = "smollm2_article_summarizer.tflite"
-    }
-
-    tasks.named("preBuild") {
-        dependsOn("downloadSmolLMModel")
-    }
-    */
 }
 
 dependencies {
@@ -95,15 +76,15 @@ dependencies {
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.32.0")
     implementation("com.google.accompanist:accompanist-swiperefresh:0.32.0")
 
-    // TensorFlow Lite
-    implementation("org.tensorflow:tensorflow-lite:2.15.0")
-    implementation("androidx.compose.material3:material3-window-size-class:1.2.0")
-    // For text processing models
+    // TensorFlow Lite - Updated to latest version
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")
+    // Additional TensorFlow Lite dependencies for better model support
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.16.1")
 
     // RSS Parsing Library
-    implementation("com.rometools:rome:1.19.0")  // Updated version
+    implementation("com.rometools:rome:1.19.0")
 
     // Core Android libraries
     implementation("androidx.core:core-ktx:1.12.0")
@@ -131,11 +112,11 @@ dependencies {
 
     // RSS parser library
     implementation("com.prof18.rssparser:rssparser:6.0.3")
-    implementation("io.coil-kt:coil-compose:2.5.0") // Or the latest version
+    implementation("io.coil-kt:coil-compose:2.5.0")
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.4.0")
-    implementation("androidx.compose.ui:ui-graphics:1.6.8") // Use the latest version
+    implementation("androidx.compose.ui:ui-graphics:1.6.8")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

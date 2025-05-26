@@ -22,6 +22,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import java.util.UUID
 import kotlin.random.Random
+import com.example.novascope.ai.T5DebugHelper
 
 class NovascopeViewModel(private val context: Context) : ViewModel() {
 
@@ -68,6 +69,22 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     private var activity: ComponentActivity? = null
 
     init {
+        // Debug T5 model setup
+        Log.d("ViewModel", "ViewModel initialization started")
+
+        // Run T5 debug check
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val debugInfo = T5DebugHelper.debugT5Model(context)
+                Log.d("ViewModel", "T5 Debug Info:\n$debugInfo")
+
+                val testInfo = T5DebugHelper.testT5Initialization(context)
+                Log.d("ViewModel", "T5 Test Info:\n$testInfo")
+            } catch (e: Exception) {
+                Log.e("ViewModel", "Error in T5 debug check: ${e.message}", e)
+            }
+        }
+
         // Initialize feeds
         viewModelScope.launch {
             feedRepository.feeds.collect { latestFeeds ->
@@ -75,6 +92,21 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                 if (_uiState.value.newsItems.isEmpty()) {
                     loadFeeds()
                 }
+            }
+        }
+
+        // Initialize AI model in background with automatic download
+        // Delay this slightly to let the app settle first
+        viewModelScope.launch {
+            delay(3000) // Wait 3 seconds before starting model initialization
+            initializeAiModelInBackground()
+        }
+
+        // Monitor model import state
+        viewModelScope.launch {
+            articleSummarizer.importState.collect { state ->
+                Log.d("ViewModel", "Model import state changed: $state")
+                _uiState.update { it.copy(modelImportState = state) }
             }
         }
 
@@ -98,14 +130,37 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
             try {
                 Log.d("ViewModel", "Starting AI model initialization")
 
+                // Give the app some time to settle before initializing the model
+                delay(2000)
+
                 // Attempt to initialize the model (will auto-download if needed)
-                withTimeoutOrNull(30000L) { // 30 second timeout
+                val success = withTimeoutOrNull(60000L) { // Increased to 60 second timeout
                     articleSummarizer.initializeModel()
+                } ?: false
+
+                if (success) {
+                    Log.d("ViewModel", "AI model initialization completed successfully")
+
+                    // Update UI state to indicate model is ready
+                    _uiState.update {
+                        it.copy(modelImportState = ModelFileManager.ImportState.Success)
+                    }
+                } else {
+                    Log.w("ViewModel", "AI model initialization failed or timed out")
+
+                    // Update UI state to show model not imported
+                    _uiState.update {
+                        it.copy(modelImportState = ModelFileManager.ImportState.Error("Model initialization failed"))
+                    }
                 }
 
-                Log.d("ViewModel", "AI model initialization completed")
             } catch (e: Exception) {
                 Log.e("ViewModel", "Error initializing AI model: ${e.message}", e)
+
+                // Update UI state to show error
+                _uiState.update {
+                    it.copy(modelImportState = ModelFileManager.ImportState.Error("Initialization error: ${e.message}"))
+                }
             }
         }
     }
@@ -139,19 +194,22 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                     }
                 }
 
-                val success = articleSummarizer.initializeModel()
+                val success = withTimeoutOrNull(120000L) { // 2 minutes timeout for download
+                    articleSummarizer.initializeModel()
+                } ?: false
 
                 if (success) {
                     Log.d("ViewModel", "T5 model download and initialization successful")
 
                     // If there's a selected article, generate summary
                     _uiState.value.selectedArticle?.let { article ->
+                        delay(500) // Small delay to ensure model is ready
                         generateSummary(article)
                     }
                 } else {
-                    Log.e("ViewModel", "T5 model download failed")
+                    Log.e("ViewModel", "T5 model download failed or timed out")
                     _uiState.update {
-                        it.copy(modelImportState = ModelFileManager.ImportState.Error("Failed to download T5 model"))
+                        it.copy(modelImportState = ModelFileManager.ImportState.Error("Download failed or timed out"))
                     }
                 }
 
@@ -446,34 +504,29 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         _uiState.update { it.copy(summaryState = SummaryState.Loading) }
 
         try {
+            Log.d("ViewModel", "Starting summary generation for: ${newsItem.title}")
+
             if (!articleSummarizer.isModelImported) {
                 Log.d("ViewModel", "T5 model not available, showing ModelNotImported state")
                 _uiState.update { it.copy(summaryState = SummaryState.ModelNotImported) }
                 return
             }
 
-            withTimeoutOrNull(15000L) { // Increased timeout for T5 inference
+            withTimeoutOrNull(30000L) { // 30 second timeout for summary generation
                 articleSummarizer.summarizeArticle(newsItem).collect { summaryState ->
+                    Log.d("ViewModel", "Summary state: $summaryState")
                     _uiState.update { it.copy(summaryState = summaryState) }
                 }
             } ?: run {
-                // Fallback to extractive summarization on timeout
-                val fallback = articleSummarizer.generateFallbackSummary(newsItem)
+                Log.w("ViewModel", "Summary generation timed out")
                 _uiState.update {
-                    it.copy(summaryState = SummaryState.Success(fallback))
+                    it.copy(summaryState = SummaryState.Error("Summary generation timed out"))
                 }
             }
         } catch (e: Exception) {
-            Log.e("ViewModel", "Error generating summary: ${e.message}")
-            try {
-                val fallback = articleSummarizer.generateFallbackSummary(newsItem)
-                _uiState.update {
-                    it.copy(summaryState = SummaryState.Success(fallback))
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
-                }
+            Log.e("ViewModel", "Error generating summary: ${e.message}", e)
+            _uiState.update {
+                it.copy(summaryState = SummaryState.Error("Error: ${e.message}"))
             }
         }
     }
@@ -489,20 +542,14 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         cancelModelDownload()
     }
 
-    fun isModelImported(): Boolean = articleSummarizer.isModelImported
-
-    fun updateSettings(settings: AppSettings) {
-        _settings.value = settings
+    fun isModelImported(): Boolean {
+        return try {
+            articleSummarizer.isModelImported
+        } catch (e: Exception) {
+            Log.e("ViewModel", "Error checking model import status: ${e.message}")
+            false
+        }
     }
-
-    override fun onCleared() {
-        super.onCleared()
-        loadFeedsJob?.cancel()
-        summaryJob?.cancel()
-        modelInitJob?.cancel()
-        articleSummarizer.close()
-    }
-}
 
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -515,4 +562,4 @@ data class AppSettings(
 enum class ThemeMode { LIGHT, DARK, SYSTEM }
 enum class TextSize(val scaleFactor: Float) {
     SMALL(0.8f), MEDIUM(1f), LARGE(1.2f)
-}
+}}
