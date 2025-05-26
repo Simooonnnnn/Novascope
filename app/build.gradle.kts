@@ -74,7 +74,7 @@ dependencies {
 
     // Accompanist System UI Controller and SwipeRefresh
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.32.0")
-    implementation("com.google.accompanist:accompanist-swiperefresh:0.32.0")
+    implementation("com.google.accompanist:accompanist-swiperefresh:0.34.0")
 
     // TensorFlow Lite - Updated to latest version
     implementation("org.tensorflow:tensorflow-lite:2.16.1")

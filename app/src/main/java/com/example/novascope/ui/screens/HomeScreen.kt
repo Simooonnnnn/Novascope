@@ -29,6 +29,13 @@ import com.example.novascope.ui.components.SmallNewsCard
 import com.example.novascope.viewmodel.NovascopeViewModel
 import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
