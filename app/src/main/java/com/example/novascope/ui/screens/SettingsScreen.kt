@@ -17,7 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Optimized settings screen with better performance
+ * Updated settings screen with web scraping option
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +32,7 @@ fun SettingsScreen(
                 useDynamicColor = true,
                 enableNotifications = true,
                 enableAiSummary = true,
+                enableWebScraping = true, // New setting
                 textSize = TextSize.MEDIUM
             )
         )
@@ -40,6 +41,7 @@ fun SettingsScreen(
     // Dialog states managed separately to only render when needed
     var showThemeDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
+    var showScrapingInfoDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -121,6 +123,20 @@ fun SettingsScreen(
                 SettingsSectionHeader("Features")
             }
 
+            item(key = "web_scraping") {
+                SettingsToggleItem(
+                    title = "Web Scraping",
+                    subtitle = "Fetch full article content from websites",
+                    icon = Icons.Outlined.Language,
+                    checked = settingsState.value.enableWebScraping,
+                    onToggle = {
+                        settingsState.value = settingsState.value.copy(enableWebScraping = it)
+                    },
+                    showInfo = true,
+                    onInfoClick = { showScrapingInfoDialog = true }
+                )
+            }
+
             item(key = "ai_summaries") {
                 SettingsToggleItem(
                     title = "AI Summaries",
@@ -166,7 +182,7 @@ fun SettingsScreen(
             item(key = "clear_cache") {
                 SettingsItem(
                     title = "Clear Cache",
-                    subtitle = "Free up space used by images and data",
+                    subtitle = "Free up space used by images and scraped content",
                     icon = Icons.Outlined.Delete,
                     onClick = { showClearCacheDialog = true }
                 )
@@ -220,7 +236,7 @@ fun SettingsScreen(
             AlertDialog(
                 onDismissRequest = { showClearCacheDialog = false },
                 title = { Text("Clear Cache") },
-                text = { Text("This will clear all cached images and data. This action cannot be undone.") },
+                text = { Text("This will clear all cached images, scraped content, and RSS data. This action cannot be undone.") },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -234,6 +250,30 @@ fun SettingsScreen(
                 dismissButton = {
                     TextButton(onClick = { showClearCacheDialog = false }) {
                         Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (showScrapingInfoDialog) {
+            AlertDialog(
+                onDismissRequest = { showScrapingInfoDialog = false },
+                title = { Text("Web Scraping") },
+                text = {
+                    Column {
+                        Text("Web scraping fetches full article content directly from websites, providing you with complete articles instead of just RSS summaries.")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Benefits:")
+                        Text("• Complete article content")
+                        Text("• Better reading experience")
+                        Text("• More content for AI summaries")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Note: This may increase data usage and loading times. Use only for research and learning purposes.")
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showScrapingInfoDialog = false }) {
+                        Text("Got it")
                     }
                 }
             )
@@ -372,14 +412,16 @@ fun SettingsItem(
     }
 }
 
-// Simpler toggle item implementation
+// Enhanced toggle item implementation with info button
 @Composable
 fun SettingsToggleItem(
     title: String,
     subtitle: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     checked: Boolean,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    showInfo: Boolean = false,
+    onInfoClick: () -> Unit = {}
 ) {
     Surface(
         modifier = Modifier
@@ -416,10 +458,29 @@ fun SettingsToggleItem(
                     .weight(1f)
                     .padding(vertical = 4.dp)
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+
+                    if (showInfo) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = onInfoClick,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = "More info",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
 
                 if (subtitle.isNotEmpty()) {
                     Text(
@@ -444,6 +505,7 @@ data class SettingsState(
     val useDynamicColor: Boolean,
     val enableNotifications: Boolean,
     val enableAiSummary: Boolean,
+    val enableWebScraping: Boolean, // New setting
     val textSize: TextSize
 )
 

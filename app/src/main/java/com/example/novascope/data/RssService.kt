@@ -5,6 +5,9 @@ import android.util.Log
 import com.example.novascope.model.NewsItem
 import com.prof18.rssparser.RssParser
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URL
@@ -12,10 +15,10 @@ import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.random.Random
 
 class RssService {
     private val rssParser = RssParser()
+    private val webScraper = WebScraper() // Add web scraper
 
     // Simple cache with timestamp
     private data class CacheEntry(
@@ -101,43 +104,8 @@ class RssService {
                 val feedIcon = channel.image?.url
                 val feedTitle = cleanText(channel.title ?: "Unknown Source")
 
-                // Process items efficiently with better error handling
-                val items = channel.items.mapNotNull { item ->
-                    try {
-                        val publishTimeMillis = parseDate(item.pubDate)
-                        val rawContent = item.content ?: item.description ?: ""
-                        val cleanContent = cleanHtmlContent(rawContent)
-
-                        // Generate more stable ID
-                        val stableId = generateStableId(item.title, item.link, item.pubDate)
-
-                        // Try multiple methods to extract image
-                        val imageUrl = extractBestImage(item.image, rawContent, item.link)
-
-                        Log.d("RssService", "Processing item: ${item.title}")
-                        if (imageUrl != null) {
-                            Log.d("RssService", "Found image: $imageUrl")
-                        }
-
-                        NewsItem(
-                            id = stableId,
-                            title = cleanText(item.title ?: "No title"),
-                            imageUrl = imageUrl,
-                            sourceIconUrl = feedIcon,
-                            sourceName = feedTitle,
-                            publishTime = formatRelativeTime(publishTimeMillis),
-                            publishTimeMillis = publishTimeMillis,
-                            content = cleanContent,
-                            url = item.link ?: "",
-                            feedId = null,
-                            isBookmarked = false,
-                            isBigArticle = false
-                        )
-                    } catch (e: Exception) {
-                        Log.e("RssService", "Error processing RSS item: ${e.message}")
-                        null
-                    }
-                }.sortedByDescending { it.publishTimeMillis }
+                // Process items efficiently without web scraping (original behavior)
+                val items = processItemsRegular(channel.items, feedIcon, feedTitle)
 
                 Log.d("RssService", "Successfully processed ${items.size} items")
 
@@ -150,6 +118,200 @@ class RssService {
                 // Return cached items if available, otherwise empty list
                 cache[url]?.items ?: emptyList()
             }
+        }
+    }
+
+    suspend fun fetchFeedWithScraping(url: String, forceRefresh: Boolean = false): List<NewsItem> {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d("RssService", "Fetching feed with scraping: $url")
+
+                // Check cache first
+                if (!forceRefresh) {
+                    cache[url]?.let { entry ->
+                        if (System.currentTimeMillis() - entry.timestamp < CACHE_DURATION) {
+                            Log.d("RssService", "Returning cached results for: $url")
+                            return@withContext entry.items
+                        }
+                    }
+                }
+
+                // Fetch with timeout
+                val channel = withTimeoutOrNull(15000L) {
+                    rssParser.getRssChannel(url)
+                }
+
+                if (channel == null) {
+                    Log.e("RssService", "Timeout fetching feed: $url")
+                    return@withContext cache[url]?.items ?: emptyList()
+                }
+
+                Log.d("RssService", "Successfully fetched channel: ${channel.title}")
+                Log.d("RssService", "Number of items: ${channel.items.size}")
+
+                val feedIcon = channel.image?.url
+                val feedTitle = cleanText(channel.title ?: "Unknown Source")
+
+                // Process items with web scraping
+                val items = processItemsWithScraping(channel.items, feedIcon, feedTitle)
+
+                Log.d("RssService", "Successfully processed ${items.size} items with scraping")
+
+                // Update cache
+                cache[url] = CacheEntry(items, System.currentTimeMillis())
+                items
+
+            } catch (e: Exception) {
+                Log.e("RssService", "Error fetching feed with scraping $url: ${e.message}", e)
+                // Return cached items if available, otherwise empty list
+                cache[url]?.items ?: emptyList()
+            }
+        }
+    }
+
+    /**
+     * Process RSS items without web scraping (original behavior)
+     */
+    private fun processItemsRegular(
+        rssItems: List<com.prof18.rssparser.model.RssItem>,
+        feedIcon: String?,
+        feedTitle: String
+    ): List<NewsItem> {
+        return rssItems.mapNotNull { item ->
+            processItemRegular(item, feedIcon, feedTitle)
+        }.sortedByDescending { it.publishTimeMillis }
+    }
+
+    /**
+     * Process RSS items with web scraping for full content
+     */
+    private suspend fun processItemsWithScraping(
+        rssItems: List<com.prof18.rssparser.model.RssItem>,
+        feedIcon: String?,
+        feedTitle: String
+    ): List<NewsItem> = coroutineScope {
+        // Process first 5-10 items with scraping to avoid overwhelming the server
+        val itemsToScrape = rssItems.take(10)
+        val remainingItems = rssItems.drop(10)
+
+        // Process items with scraping in parallel (but limited)
+        val scrapedItems = itemsToScrape.map { item ->
+            async(Dispatchers.IO) {
+                processItemWithScraping(item, feedIcon, feedTitle)
+            }
+        }.awaitAll()
+
+        // Process remaining items without scraping (fallback to RSS content)
+        val regularItems = remainingItems.map { item ->
+            processItemRegular(item, feedIcon, feedTitle)
+        }
+
+        (scrapedItems + regularItems)
+            .filterNotNull()
+            .sortedByDescending { it.publishTimeMillis }
+    }
+
+    /**
+     * Process individual RSS item with web scraping
+     */
+    private suspend fun processItemWithScraping(
+        item: com.prof18.rssparser.model.RssItem,
+        feedIcon: String?,
+        feedTitle: String
+    ): NewsItem? {
+        return try {
+            val publishTimeMillis = parseDate(item.pubDate)
+            val stableId = generateStableId(item.title, item.link, item.pubDate)
+
+            // Try to scrape full content if URL is available
+            var finalContent = item.content ?: item.description ?: ""
+            var finalTitle = item.title ?: "No title"
+            var finalImageUrl = extractBestImage(item.image, finalContent, item.link)
+
+            if (!item.link.isNullOrBlank()) {
+                Log.d("RssService", "Attempting to scrape: ${item.link}")
+
+                val scrapedArticle = withTimeoutOrNull(20000L) { // 20 second timeout per article
+                    webScraper.scrapeArticle(item.link!!)
+                }
+
+                if (scrapedArticle?.success == true && !scrapedArticle.content.isNullOrBlank()) {
+                    Log.d("RssService", "Successfully scraped content: ${scrapedArticle.content!!.length} chars")
+                    finalContent = scrapedArticle.content!!
+
+                    // Use scraped title if better than RSS title
+                    if (!scrapedArticle.title.isNullOrBlank() && scrapedArticle.title!!.length > finalTitle.length) {
+                        finalTitle = scrapedArticle.title!!
+                    }
+
+                    // Use scraped image if available and better
+                    if (!scrapedArticle.imageUrl.isNullOrBlank()) {
+                        finalImageUrl = scrapedArticle.imageUrl
+                    }
+                } else {
+                    Log.d("RssService", "Scraping failed for ${item.link}, using RSS content")
+                    finalContent = cleanHtmlContent(finalContent)
+                }
+            } else {
+                finalContent = cleanHtmlContent(finalContent)
+            }
+
+            NewsItem(
+                id = stableId,
+                title = cleanText(finalTitle),
+                imageUrl = finalImageUrl,
+                sourceIconUrl = feedIcon,
+                sourceName = feedTitle,
+                publishTime = formatRelativeTime(publishTimeMillis),
+                publishTimeMillis = publishTimeMillis,
+                content = finalContent,
+                url = item.link ?: "",
+                feedId = null,
+                isBookmarked = false,
+                isBigArticle = false
+            )
+        } catch (e: Exception) {
+            Log.e("RssService", "Error processing RSS item with scraping: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Process RSS item without scraping (fallback method)
+     */
+    private fun processItemRegular(
+        item: com.prof18.rssparser.model.RssItem,
+        feedIcon: String?,
+        feedTitle: String
+    ): NewsItem? {
+        return try {
+            val publishTimeMillis = parseDate(item.pubDate)
+            val rawContent = item.content ?: item.description ?: ""
+            val cleanContent = cleanHtmlContent(rawContent)
+
+            // Generate more stable ID
+            val stableId = generateStableId(item.title, item.link, item.pubDate)
+
+            // Try multiple methods to extract image
+            val imageUrl = extractBestImage(item.image, rawContent, item.link)
+
+            NewsItem(
+                id = stableId,
+                title = cleanText(item.title ?: "No title"),
+                imageUrl = imageUrl,
+                sourceIconUrl = feedIcon,
+                sourceName = feedTitle,
+                publishTime = formatRelativeTime(publishTimeMillis),
+                publishTimeMillis = publishTimeMillis,
+                content = cleanContent,
+                url = item.link ?: "",
+                feedId = null,
+                isBookmarked = false,
+                isBigArticle = false
+            )
+        } catch (e: Exception) {
+            Log.e("RssService", "Error processing RSS item: ${e.message}")
+            null
         }
     }
 
@@ -307,5 +469,7 @@ class RssService {
         } else {
             cache.clear()
         }
+        // Also clear web scraper cache
+        webScraper.clearCache()
     }
 }
