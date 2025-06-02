@@ -164,13 +164,6 @@ class FeedRepository(private val context: Context) {
                 iconUrl = "https://assets.guim.co.uk/images/guardian-logo-rss.c45beb1bafa34b347ac333af2e6fe23f.png",
                 isDefault = true
             ),
-            Feed(
-                name = "The Guardian",
-                url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-                category = FeedCategory.News,
-                iconUrl = "https://assets.guim.co.uk/images/guardian-logo-rss.c45beb1bafa34b347ac333af2e6fe23f.png",
-                isDefault = true
-            ),
 
 
             // Technology
