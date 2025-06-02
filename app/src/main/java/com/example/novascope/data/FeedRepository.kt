@@ -158,12 +158,20 @@ class FeedRepository(private val context: Context) {
                 isDefault = true
             ),
             Feed(
-                name = "BBC News",
-                url = "https://feeds.bbci.co.uk/news/rss.xml",
+                name = "The Guardian",
+                url = "https://www.theguardian.com/world/rss",
                 category = FeedCategory.News,
-                iconUrl = "https://news.bbcimg.co.uk/nol/shared/img/bbc_news_120x60.gif",
+                iconUrl = "https://assets.guim.co.uk/images/guardian-logo-rss.c45beb1bafa34b347ac333af2e6fe23f.png",
                 isDefault = true
             ),
+            Feed(
+                name = "The Guardian",
+                url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+                category = FeedCategory.News,
+                iconUrl = "https://assets.guim.co.uk/images/guardian-logo-rss.c45beb1bafa34b347ac333af2e6fe23f.png",
+                isDefault = true
+            ),
+
 
             // Technology
             Feed(
@@ -181,12 +189,13 @@ class FeedRepository(private val context: Context) {
                 isDefault = true
             ),
             Feed(
-                name = "TechCrunch",
-                url = "https://techcrunch.com/feed/",
+                name = "UX Collective",
+                url = "https://uxdesign.cc/feed/",
                 category = FeedCategory.Tech,
-                iconUrl = "https://techcrunch.com/wp-content/uploads/2015/02/cropped-cropped-favicon-gradient.png",
+                iconUrl = "https://cdn-images-1.medium.com/fit/c/36/36/1*mDhF9X4VO0rCrJvWFatyxg.png",
                 isDefault = true
             ),
+
 
             // Science
             Feed(
