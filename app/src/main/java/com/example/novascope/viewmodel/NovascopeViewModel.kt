@@ -2,10 +2,11 @@
 package com.example.novascope.viewmodel
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.novascope.ai.ArticleSummarizer
@@ -29,7 +30,6 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     private val rssService = RssService()
     private val feedRepository = FeedRepository(context)
     private val articleSummarizer = ArticleSummarizer(context)
-    private val prefs: SharedPreferences = context.getSharedPreferences("novascope_settings", Context.MODE_PRIVATE)
 
     // Job management
     private var loadFeedsJob: Job? = null
@@ -58,8 +58,8 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
     )
     val feeds: SharedFlow<List<Feed>> = _feeds.asSharedFlow()
 
-    // Settings with persistence
-    private val _settings = MutableStateFlow(loadSettings())
+    // Settings
+    private val _settings = MutableStateFlow(AppSettings())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
     // Bookmarked IDs for faster lookup
@@ -110,48 +110,15 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
             }
         }
 
-        // Watch settings changes and save them
+        // Initialize AI model in background with automatic download
+        initializeAiModelInBackground()
+
+        // Monitor model import state
         viewModelScope.launch {
-            settings.collect { newSettings ->
-                saveSettings(newSettings)
+            articleSummarizer.importState.collect { state ->
+                _uiState.update { it.copy(modelImportState = state) }
             }
         }
-    }
-
-    /**
-     * Load settings from SharedPreferences
-     */
-    private fun loadSettings(): AppSettings {
-        return AppSettings(
-            themeMode = ThemeMode.values()[prefs.getInt("theme_mode", ThemeMode.SYSTEM.ordinal)],
-            useDynamicColor = prefs.getBoolean("dynamic_color", true),
-            enableAiSummary = prefs.getBoolean("ai_summary", true),
-            enableNotifications = prefs.getBoolean("notifications", true),
-            enableWebScraping = prefs.getBoolean("web_scraping", true), // Default enabled
-            textSize = TextSize.values()[prefs.getInt("text_size", TextSize.MEDIUM.ordinal)]
-        )
-    }
-
-    /**
-     * Save settings to SharedPreferences
-     */
-    private fun saveSettings(settings: AppSettings) {
-        prefs.edit().apply {
-            putInt("theme_mode", settings.themeMode.ordinal)
-            putBoolean("dynamic_color", settings.useDynamicColor)
-            putBoolean("ai_summary", settings.enableAiSummary)
-            putBoolean("notifications", settings.enableNotifications)
-            putBoolean("web_scraping", settings.enableWebScraping)
-            putInt("text_size", settings.textSize.ordinal)
-            apply()
-        }
-    }
-
-    /**
-     * Update a specific setting
-     */
-    fun updateSetting(update: (AppSettings) -> AppSettings) {
-        _settings.update(update)
     }
 
     /**
@@ -305,21 +272,13 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
                     return@launch
                 }
 
-                // Pass web scraping setting to RSS service
-                val webScrapingEnabled = _settings.value.enableWebScraping
-                Log.d("ViewModel", "Web scraping enabled: $webScrapingEnabled")
-
                 // Process feeds in parallel with better error handling
                 val feedResults = coroutineScope {
                     enabledFeeds.map { feed ->
                         async(Dispatchers.IO) {
                             try {
                                 Log.d("ViewModel", "Fetching feed: ${feed.name} (${feed.url})")
-                                val items = if (webScrapingEnabled) {
-                                    rssService.fetchFeedWithScraping(feed.url, forceRefresh)
-                                } else {
-                                    rssService.fetchFeed(feed.url, forceRefresh)
-                                }
+                                val items = rssService.fetchFeed(feed.url, forceRefresh)
                                 Log.d("ViewModel", "Feed ${feed.name} returned ${items.size} items")
 
                                 FeedResult.Success(
@@ -419,7 +378,7 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
             val isVeryRecent = age < (6 * 60 * 60 * 1000L) // 6 hours
             val recencyBoost = if (isVeryRecent) 0.3 else 0.0
 
-            val weight = (1.0 - normalizedAge * 0.7) + recencyBoost + (Random.nextDouble() * 0.4)
+            val weight = (1.0 - normalizedAge * 0.7) + recencyBoost + (kotlin.random.Random.nextDouble() * 0.4)
 
             item to weight
         }.sortedByDescending { it.second }
@@ -592,176 +551,16 @@ class NovascopeViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    /**
-     * Clear all caches
-     */
-    fun clearAllCaches() {
-        viewModelScope.launch {
-            rssService.clearCache()
-            Log.d("ViewModel", "All caches cleared")
-        }
+    data class AppSettings(
+        val themeMode: ThemeMode = ThemeMode.SYSTEM,
+        val useDynamicColor: Boolean = true,
+        val enableAiSummary: Boolean = true,
+        val enableNotifications: Boolean = true,
+        val textSize: TextSize = TextSize.MEDIUM
+    )
+
+    enum class ThemeMode { LIGHT, DARK, SYSTEM }
+    enum class TextSize(val scaleFactor: Float) {
+        SMALL(0.8f), MEDIUM(1f), LARGE(1.2f)
     }
-
-    /**
-     * Toggle web scraping setting
-     */
-    fun toggleWebScraping(enabled: Boolean) {
-        updateSetting { it.copy(enableWebScraping = enabled) }
-        // Optionally refresh feeds to apply the new setting immediately
-        if (_uiState.value.newsItems.isNotEmpty()) {
-            refreshFeeds()
-        }
-    }
-
-    /**
-     * Toggle AI summary setting
-     */
-    fun toggleAiSummary(enabled: Boolean) {
-        updateSetting { it.copy(enableAiSummary = enabled) }
-    }
-
-    /**
-     * Toggle notifications setting
-     */
-    fun toggleNotifications(enabled: Boolean) {
-        updateSetting { it.copy(enableNotifications = enabled) }
-    }
-
-    /**
-     * Toggle dynamic color setting
-     */
-    fun toggleDynamicColor(enabled: Boolean) {
-        updateSetting { it.copy(useDynamicColor = enabled) }
-    }
-
-    /**
-     * Update theme mode
-     */
-    fun updateThemeMode(themeMode: ThemeMode) {
-        updateSetting { it.copy(themeMode = themeMode) }
-    }
-
-    /**
-     * Update text size
-     */
-    fun updateTextSize(textSize: TextSize) {
-        updateSetting { it.copy(textSize = textSize) }
-    }
-
-    /**
-     * Get current web scraping status
-     */
-    fun isWebScrapingEnabled(): Boolean {
-        return _settings.value.enableWebScraping
-    }
-
-    /**
-     * Get current AI summary status
-     */
-    fun isAiSummaryEnabled(): Boolean {
-        return _settings.value.enableAiSummary
-    }
-
-    /**
-     * Perform a manual refresh of all feeds
-     */
-    fun performManualRefresh() {
-        viewModelScope.launch {
-            try {
-                rssService.clearCache()
-                loadFeeds(forceRefresh = true)
-                Log.d("ViewModel", "Manual refresh completed")
-            } catch (e: Exception) {
-                Log.e("ViewModel", "Error during manual refresh: ${e.message}", e)
-                _uiState.update {
-                    it.copy(errorMessage = "Refresh failed: ${e.message}")
-                }
-            }
-        }
-    }
-
-    /**
-     * Clear specific feed cache
-     */
-    fun clearFeedCache(feedUrl: String) {
-        viewModelScope.launch {
-            rssService.clearCache(feedUrl)
-            Log.d("ViewModel", "Cache cleared for feed: $feedUrl")
-        }
-    }
-
-    /**
-     * Get feed statistics
-     */
-    fun getFeedStatistics(): Map<String, Any> {
-        val currentState = _uiState.value
-        return mapOf(
-            "totalArticles" to currentState.newsItems.size,
-            "bookmarkedArticles" to currentState.bookmarkedItems.size,
-            "totalFeeds" to (_feeds.replayCache.firstOrNull()?.size ?: 0),
-            "enabledFeeds" to feedRepository.getEnabledFeeds().size,
-            "webScrapingEnabled" to _settings.value.enableWebScraping,
-            "aiSummaryEnabled" to _settings.value.enableAiSummary
-        )
-    }
-
-    /**
-     * Debug method to get current state information
-     */
-    fun getDebugInfo(): String {
-        val currentState = _uiState.value
-        val currentSettings = _settings.value
-
-        return buildString {
-            appendLine("=== NovascopeViewModel Debug Info ===")
-            appendLine("Loading: ${currentState.isLoading}")
-            appendLine("Refreshing: ${currentState.isRefreshing}")
-            appendLine("News Items: ${currentState.newsItems.size}")
-            appendLine("Bookmarked Items: ${currentState.bookmarkedItems.size}")
-            appendLine("Error Message: ${currentState.errorMessage}")
-            appendLine("Selected Article: ${currentState.selectedArticle?.title}")
-            appendLine("Summary State: ${currentState.summaryState}")
-            appendLine("Model Import State: ${currentState.modelImportState}")
-            appendLine("")
-            appendLine("=== Settings ===")
-            appendLine("Theme Mode: ${currentSettings.themeMode}")
-            appendLine("Dynamic Color: ${currentSettings.useDynamicColor}")
-            appendLine("AI Summary: ${currentSettings.enableAiSummary}")
-            appendLine("Notifications: ${currentSettings.enableNotifications}")
-            appendLine("Web Scraping: ${currentSettings.enableWebScraping}")
-            appendLine("Text Size: ${currentSettings.textSize}")
-            appendLine("")
-            appendLine("=== Jobs Status ===")
-            appendLine("Load Feeds Job Active: ${loadFeedsJob?.isActive}")
-            appendLine("Summary Job Active: ${summaryJob?.isActive}")
-            appendLine("Model Init Job Active: ${modelInitJob?.isActive}")
-            appendLine("=== End Debug Info ===")
-        }
-    }
-
-    /**
-     * Clean up resources when ViewModel is destroyed
-     */
-    override fun onCleared() {
-        super.onCleared()
-        loadFeedsJob?.cancel()
-        summaryJob?.cancel()
-        modelInitJob?.cancel()
-        articleSummarizer.close()
-        Log.d("ViewModel", "ViewModel resources cleaned up")
-    }
-}
-
-data class AppSettings(
-    val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val useDynamicColor: Boolean = true,
-    val enableAiSummary: Boolean = true,
-    val enableNotifications: Boolean = true,
-    val enableWebScraping: Boolean = true, // New setting
-    val textSize: TextSize = TextSize.MEDIUM
-)
-
-enum class ThemeMode { LIGHT, DARK, SYSTEM }
-enum class TextSize(val scaleFactor: Float) {
-    SMALL(0.8f), MEDIUM(1f), LARGE(1.2f)
 }
